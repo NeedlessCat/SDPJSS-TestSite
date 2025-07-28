@@ -26,4 +26,7 @@ EMAIL_PASSWORD = "rkzw fcpt nmrl crxv"
 VITE_BACKEND_URL = 'http://localhost:4000'
 VITE_RAZORPAY_KEY_ID = "rzp_test_LfpeKLETcSISEc"
 
+YOUR_UPI_ID = "8210701450@axl"
+YOUR_MERCHANT_NAME = "SDPJSS Donation Comittee"
+
 END!!
