@@ -25,6 +25,8 @@ const AdminContextProvider = (props) => {
   const [noticeList, setNoticeList] = useState([]);
   const [noticeCount, setNoticeCount] = useState(0);
 
+  const [usersList, setUsersList] = useState([]);
+
   const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
   // Get family list with count
@@ -40,6 +42,28 @@ const AdminContextProvider = (props) => {
       }
     } catch (error) {
       toast.error(error.message);
+    }
+  };
+
+  // Load users by khandan ID for father selection
+  const loadUsersByKhandan = async (khandanId) => {
+    try {
+      const { data } = await axios.get(
+        backendUrl + `/api/user/get-by-khandan/${khandanId}`
+      );
+      console.log("Users by khandan:", data);
+      if (data.success) {
+        // Filter male users for father selection
+        const maleUsers = data.users.filter((user) => user.gender === "male");
+        setUsersList(maleUsers);
+      } else {
+        toast.error(data.message);
+        setUsersList([]);
+      }
+    } catch (error) {
+      console.log(error);
+      toast.error(error.message);
+      setUsersList([]);
     }
   };
 
@@ -322,10 +346,97 @@ const AdminContextProvider = (props) => {
     }
   };
 
+  // Function to format numbers in Indian Rupee standard
+  const formatIndianCommas = (num) => {
+    if (num === null || num === undefined) {
+      return "";
+    }
+    const parts = num.toString().split(".");
+    let integerPart = parts[0];
+    let lastThree = integerPart.substring(integerPart.length - 3);
+    let otherNumbers = integerPart.substring(0, integerPart.length - 3);
+    if (otherNumbers !== "") {
+      lastThree = "," + lastThree;
+    }
+    let formattedNumber =
+      otherNumbers.replace(/\B(?=(\d{2})+(?!\d))/g, ",") + lastThree;
+    if (parts.length > 1) {
+      formattedNumber += "." + parts[1];
+    }
+    return formattedNumber;
+  };
+  const capitalizeEachWord = (str) => {
+    if (!str) return "";
+    return str
+      .split(" ")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(" ");
+  };
+
+  // Khandan and users data for registration
+  const [khandanList, setKhandanList] = useState([]);
+  // const [usersList, setUsersList] = useState([]);
+
+  // Load all khandans for registration dropdown
+  const loadKhandans = async () => {
+    try {
+      const { data } = await axios.get(backendUrl + "/api/khandan/allKhandan");
+      console.log("Khandans:", data);
+      if (data.success) {
+        setKhandanList(data.khandans);
+      } else {
+        toast.error(data.message);
+      }
+    } catch (error) {
+      console.log(error);
+      toast.error(error.message);
+    }
+  };
+
+  // Get khandan by ID
+  const getKhandanById = async (khandanId) => {
+    try {
+      const { data } = await axios.get(
+        backendUrl + `/api/khandan/get-khandan/${khandanId}`
+      );
+      if (data.success) {
+        return data.khandan;
+      } else {
+        toast.error(data.message);
+        return null;
+      }
+    } catch (error) {
+      console.log(error);
+      toast.error(error.message);
+      return null;
+    }
+  };
+
+  // Get khandan by khandanid
+  const getKhandanByKhandanId = async (khandanid) => {
+    try {
+      const { data } = await axios.get(
+        backendUrl + `/api/khandan/get-khandan/${khandanid}`
+      );
+      if (data.success) {
+        return data.khandan;
+      } else {
+        toast.error(data.message);
+        return null;
+      }
+    } catch (error) {
+      console.log(error);
+      toast.error(error.message);
+      return null;
+    }
+  };
+
   const value = {
     aToken,
     setAToken,
     backendUrl,
+    formatIndianCommas,
+    capitalizeEachWord,
 
     // Family related
     familyCount,
@@ -372,6 +483,12 @@ const AdminContextProvider = (props) => {
 
     donationList,
     getDonationList,
+    loadUsersByKhandan,
+    usersList,
+    khandanList,
+    loadKhandans,
+    loadUsersByKhandan,
+    getKhandanById,
   };
 
   return (

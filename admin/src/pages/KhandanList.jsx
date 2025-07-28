@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useContext } from "react";
 import {
   Users,
   Plus,
@@ -14,8 +14,10 @@ import {
 } from "lucide-react";
 import { toast } from "react-toastify";
 import axios from "axios";
+import { AdminContext } from "../context/AdminContext";
 
 const KhandanList = () => {
+  const { capitalizeEachWord } = useContext(AdminContext);
   const [khandanList, setKhandanList] = useState([]);
   const [khandanCount, setKhandanCount] = useState(0);
   const [showModal, setShowModal] = useState(false);
@@ -208,14 +210,6 @@ const KhandanList = () => {
     }
   };
 
-  const capitalizeEachWord = (str) => {
-    if (!str) return "";
-    return str
-      .split(" ")
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(" ");
-  };
-
   // Load khandans on component mount
   useEffect(() => {
     getKhandanList();
@@ -395,7 +389,7 @@ const KhandanList = () => {
         ...prev,
         address: {
           ...prev.address,
-          [name]: value,
+          [name]: capitalizeEachWord(value),
         },
       }));
     }

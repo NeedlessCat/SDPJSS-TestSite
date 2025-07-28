@@ -3,13 +3,16 @@ import upload from "../middlewares/multer.js";
 import {
   addCategory,
   addNotice,
+  createCourierCharge,
   deleteCategory,
+  deleteCourierCharge,
   deleteNotice,
   editCategory,
   getAdvertisementList,
   getAllCategories,
   getAvailableYears,
   getCategory,
+  getCourierCharges,
   getDonationList,
   getFamilyCount,
   getFamilyList,
@@ -19,6 +22,7 @@ import {
   getUserCount,
   getUserList,
   loginAdmin,
+  updateCourierCharge,
   updateNotice,
   updateUserStatus,
 } from "../controllers/adminController.js";
@@ -113,5 +117,11 @@ adminRouter.get("/categories/:id", getCategory);
 adminRouter.put("/categories/:id", editCategory);
 adminRouter.delete("/categories/:id", deleteCategory);
 adminRouter.get("/user-donations", authAdmin, getUserDonations);
+
+// COURIER CHARGE
+adminRouter.get("/courier-charges", getCourierCharges);
+adminRouter.post("/courier-charges", createCourierCharge);
+adminRouter.put("/courier-charges/:id", updateCourierCharge);
+adminRouter.delete("/courier-charges/:id", deleteCourierCharge);
 
 export default adminRouter;

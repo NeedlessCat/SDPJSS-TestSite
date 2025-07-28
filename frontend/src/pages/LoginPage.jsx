@@ -84,7 +84,7 @@ const LoginPage = () => {
     }));
 
     switch (location) {
-      case "In Manpur":
+      case "in_manpur":
         setAddress((prev) => ({
           ...prev,
           country: "India",
@@ -96,7 +96,7 @@ const LoginPage = () => {
           postoffice: "Buniyadganj",
         }));
         break;
-      case "In Gaya outside Manpur":
+      case "in_gaya_outside_manpur":
         setAddress((prev) => ({
           ...prev,
           country: "India",
@@ -108,7 +108,7 @@ const LoginPage = () => {
           postoffice: "",
         }));
         break;
-      case "In Bihar outside Gaya":
+      case "in_bihar_outside_gaya":
         setAddress((prev) => ({
           ...prev,
           country: "India",
@@ -120,7 +120,7 @@ const LoginPage = () => {
           postoffice: "",
         }));
         break;
-      case "In India outside Bihar":
+      case "in_india_outside_bihar":
         setAddress((prev) => ({
           ...prev,
           country: "India",
@@ -132,7 +132,7 @@ const LoginPage = () => {
           postoffice: "",
         }));
         break;
-      case "Outside India":
+      case "outside_india":
         setAddress((prev) => ({
           ...prev,
           country: "",
@@ -788,17 +788,17 @@ const LoginPage = () => {
                     required
                   >
                     <option value="">Select Current Location</option>
-                    <option value="In Manpur">In Manpur</option>
-                    <option value="In Gaya outside Manpur">
+                    <option value="in_manpur">In Manpur</option>
+                    <option value="in_gaya_outside_manpur">
                       In Gaya outside Manpur
                     </option>
-                    <option value="In Bihar outside Gaya">
+                    <option value="in_bihar_outside_gaya">
                       In Bihar outside Gaya
                     </option>
-                    <option value="In India outside Bihar">
+                    <option value="in_india_outside_bihar">
                       In India outside Bihar
                     </option>
-                    <option value="Outside India">Outside India</option>
+                    <option value="outside_india">Outside India</option>
                   </select>
                 </div>
 

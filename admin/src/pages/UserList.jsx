@@ -26,7 +26,7 @@ const UserList = () => {
     useContext(AdminContext);
 
   const [expandedUser, setExpandedUser] = useState(null); // Changed from Set to single string/null
-  const [activeTab, setActiveTab] = useState("new"); // new, approved, disapproved
+  const [activeTab, setActiveTab] = useState("approved"); // new, approved, disapproved
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(new Set()); // Track users being updated

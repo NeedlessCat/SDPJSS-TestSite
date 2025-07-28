@@ -90,7 +90,7 @@ const AppContextProvider = (props) => {
         const maleUsers = data.users.filter((user) => user.gender === "male");
         setUsersList(maleUsers);
       } else {
-        toast.error(data.message);
+        // toast.error(data.message);
         setUsersList([]);
       }
     } catch (error) {

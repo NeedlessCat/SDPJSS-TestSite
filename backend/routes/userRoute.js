@@ -1,12 +1,5 @@
 import express from "express";
 import upload from "../middlewares/multer.js";
-// import {
-//   addMember,
-//   getEntry,
-//   paymentRazorpay,
-//   updateEntry,
-//   verifyRazorpay,
-// } from "../controllers/userController.js";
 import {
   addAdvertisement,
   createDonationOrder,
@@ -46,6 +39,7 @@ import authUser from "../middlewares/authUser.js";
 import {
   getAllCategories,
   getCategory,
+  getCourierCharges,
 } from "../controllers/adminController.js";
 
 const userRouter = express.Router();
@@ -169,5 +163,6 @@ userRouter.get("/get-all-donations", authUser, getAllDonations);
 
 // Get donation statistics
 userRouter.get("/donation-stats", authUser, getDonationStats);
+userRouter.get("/courier-charges", getCourierCharges);
 
 export default userRouter;

@@ -1,6 +1,7 @@
-import React, { useContext, useState } from "react";
+import React, { useContext, useState, useEffect } from "react";
 import { AppContext } from "../../context/AppContext";
 import axios from "axios";
+import { toast } from "react-toastify";
 import {
   User,
   Mail,
@@ -24,14 +25,28 @@ import {
 } from "lucide-react";
 
 const ProfileSection = () => {
-  const { userData, loading, utoken, backendUrl, loadUserData } =
-    useContext(AppContext);
+  const {
+    userData,
+    loading,
+    utoken,
+    backendUrl,
+    loadUserData,
+    usersList,
+    loadUsersByKhandan,
+  } = useContext(AppContext);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [editingSections, setEditingSections] = useState({});
   const [editedData, setEditedData] = useState({});
   const [isLoading, setIsLoading] = useState(false);
   const [profileImage, setProfileImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
+  const [mobileNumberError, setMobileNumberError] = useState("");
+
+  useEffect(() => {
+    if (userData?.khandanid) {
+      loadUsersByKhandan(userData.khandanid);
+    }
+  }, [userData]);
 
   if (loading) {
     return (
@@ -53,6 +68,12 @@ const ProfileSection = () => {
       </div>
     );
   }
+
+  const getFatherName = (fatherId) => {
+    console.log;
+    const father = usersList.find((user) => user.id === fatherId);
+    return father ? father.fullname : "N/A - Eldest";
+  };
 
   const formatDate = (dateString) => {
     if (!dateString) return "Not provided";
@@ -78,6 +99,14 @@ const ProfileSection = () => {
       address.pin,
     ].filter(Boolean);
     return parts.length > 0 ? parts.join(", ") : "Not provided";
+  };
+
+  const capitalizeEachWord = (str) => {
+    if (!str) return "";
+    return str
+      .split(" ")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(" ");
   };
 
   const handleImageUpload = (event) => {
@@ -116,13 +145,16 @@ const ProfileSection = () => {
         await loadUserData();
         setProfileImage(null);
         setImagePreview(null);
-        alert("Profile image updated successfully!");
+        toast.success("Profile image updated successfully!");
       } else {
-        alert(response.data.message || "Failed to update profile image");
+        toast.error(response.data.message || "Failed to update profile image");
       }
     } catch (error) {
       console.error("Error updating profile image:", error);
-      alert("Failed to update profile image. Please try again.");
+      toast.error(
+        error.response?.data?.message ||
+          "Failed to update profile image. Please try again."
+      );
     } finally {
       setIsLoading(false);
     }
@@ -148,6 +180,7 @@ const ProfileSection = () => {
         mobileNumber: userData.contact?.mobileno?.number || "",
         whatsappno: userData.contact?.whatsappno || "",
       }));
+      setMobileNumberError(""); // Clear error when entering edit mode
     } else if (sectionName === "address") {
       setEditedData((prev) => ({
         ...prev,
@@ -196,24 +229,31 @@ const ProfileSection = () => {
   const handleCancelEdit = (sectionName) => {
     setEditingSections((prev) => ({ ...prev, [sectionName]: false }));
     setEditedData({});
+    if (sectionName === "contact") {
+      setMobileNumberError("");
+    }
   };
 
   const handleSaveSection = async (sectionName) => {
     setIsLoading(true);
 
     try {
-      // Prepare the data based on section
       let updatePayload = { userId: userData._id };
 
       if (sectionName === "personal") {
         updatePayload = {
           ...updatePayload,
-          fullname: editedData.fullname,
-          fatherid: editedData.fatherid,
           mother: editedData.mother,
           dob: editedData.dob,
         };
       } else if (sectionName === "contact") {
+        if (editedData.mobileNumber && editedData.mobileNumber.length !== 10) {
+          setMobileNumberError("Mobile number must be 10 digits long.");
+          setIsLoading(false);
+          return;
+        } else {
+          setMobileNumberError("");
+        }
         updatePayload = {
           ...updatePayload,
           contact: {
@@ -292,26 +332,18 @@ const ProfileSection = () => {
         // Update was successful
         setEditingSections((prev) => ({ ...prev, [sectionName]: false }));
         setEditedData({});
-
+        toast.success(`${sectionName} section updated successfully!`);
         // Refresh user data from context
         await loadUserData();
-
-        alert(`${sectionName} section updated successfully!`);
       } else {
         // Handle API error
-        alert(response.data.message || "Failed to update profile");
+        toast.error(response.data.message || "Failed to update profile");
       }
     } catch (error) {
       console.error("Error updating profile:", error);
-
-      // Handle different types of errors
-      if (error.response?.data?.message) {
-        alert(error.response.data.message);
-      } else if (error.message) {
-        alert(error.message);
-      } else {
-        alert("Failed to update profile. Please try again.");
-      }
+      toast.error(
+        error.response?.data?.message || error.message || "An error occurred"
+      );
     } finally {
       setIsLoading(false);
     }
@@ -319,6 +351,83 @@ const ProfileSection = () => {
 
   const handleInputChange = (field, value) => {
     setEditedData((prev) => ({ ...prev, [field]: value }));
+    // Clear mobile number error on input change
+    if (field === "mobileNumber") {
+      setMobileNumberError("");
+    }
+  };
+
+  const handleLocationChange = (location) => {
+    setEditedData((prev) => ({
+      ...prev,
+      currlocation: location,
+    }));
+
+    // Autofill address fields based on location
+    switch (location) {
+      case "in_manpur":
+        setEditedData((prev) => ({
+          ...prev,
+          country: "India",
+          state: "Bihar",
+          district: "Gaya",
+          city: "Gaya",
+          pin: "823003",
+          street: "Manpur",
+          postoffice: "Buniyadganj",
+        }));
+        break;
+      case "in_gaya_outside_manpur":
+        setEditedData((prev) => ({
+          ...prev,
+          country: "India",
+          state: "Bihar",
+          district: "Gaya",
+          city: "Gaya",
+          pin: "",
+          street: "",
+          postoffice: "",
+        }));
+        break;
+      case "in_bihar_outside_gaya":
+        setEditedData((prev) => ({
+          ...prev,
+          country: "India",
+          state: "Bihar",
+          district: "",
+          city: "",
+          pin: "",
+          street: "",
+          postoffice: "",
+        }));
+        break;
+      case "in_india_outside_bihar":
+        setEditedData((prev) => ({
+          ...prev,
+          country: "India",
+          state: "",
+          district: "",
+          city: "",
+          pin: "",
+          street: "",
+          postoffice: "",
+        }));
+        break;
+      case "outside_india":
+        setEditedData((prev) => ({
+          ...prev,
+          country: "",
+          state: "",
+          district: "",
+          city: "",
+          pin: "",
+          street: "",
+          postoffice: "",
+        }));
+        break;
+      default:
+        break;
+    }
   };
 
   const renderEditControls = (sectionName) => (
@@ -465,39 +574,23 @@ const ProfileSection = () => {
                 <label className="text-sm font-medium text-gray-500">
                   Full Name
                 </label>
-                {editingSections.personal ? (
-                  <input
-                    type="text"
-                    value={editedData.fullname || ""}
-                    onChange={(e) =>
-                      handleInputChange("fullname", e.target.value)
-                    }
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  />
-                ) : (
-                  <p className="text-gray-900 mt-1">
-                    {userData.fullname || "Not provided"}
-                  </p>
-                )}
+                <input
+                  type="text"
+                  value={userData.fullname || ""}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 cursor-not-allowed"
+                  disabled
+                />
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-500">
-                  Father ID
+                  Father's Name
                 </label>
-                {editingSections.personal ? (
-                  <input
-                    type="text"
-                    value={editedData.fatherid || ""}
-                    onChange={(e) =>
-                      handleInputChange("fatherid", e.target.value)
-                    }
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  />
-                ) : (
-                  <p className="text-gray-900 mt-1">
-                    {userData.fatherid || "Not provided"}
-                  </p>
-                )}
+                <input
+                  type="text"
+                  value={getFatherName(userData.fatherid)}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 cursor-not-allowed"
+                  disabled
+                />
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-500">
@@ -508,7 +601,10 @@ const ProfileSection = () => {
                     type="text"
                     value={editedData.mother || ""}
                     onChange={(e) =>
-                      handleInputChange("mother", e.target.value)
+                      handleInputChange(
+                        "mother",
+                        capitalizeEachWord(e.target.value)
+                      )
                     }
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                   />
@@ -640,28 +736,42 @@ const ProfileSection = () => {
                   Mobile Number
                 </label>
                 {editingSections.contact ? (
-                  <div className="flex mt-1 space-x-2">
-                    <select
-                      value={editedData.mobileCode || "+91"}
-                      onChange={(e) =>
-                        handleInputChange("mobileCode", e.target.value)
-                      }
-                      className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="+91">+91</option>
-                      <option value="+1">+1</option>
-                      <option value="+44">+44</option>
-                      <option value="+61">+61</option>
-                    </select>
-                    <input
-                      type="tel"
-                      value={editedData.mobileNumber || ""}
-                      onChange={(e) =>
-                        handleInputChange("mobileNumber", e.target.value)
-                      }
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  </div>
+                  <>
+                    <div className="flex mt-1 space-x-2">
+                      <select
+                        value={editedData.mobileCode || "+91"}
+                        onChange={(e) =>
+                          handleInputChange("mobileCode", e.target.value)
+                        }
+                        className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="+91">+91</option>
+                        <option value="+1">+1</option>
+                        <option value="+44">+44</option>
+                        <option value="+61">+61</option>
+                        <option value="+971">+971</option>
+                      </select>
+                      <input
+                        type="tel"
+                        value={editedData.mobileNumber || ""}
+                        onChange={(e) =>
+                          handleInputChange("mobileNumber", e.target.value)
+                        }
+                        className={`flex-1 px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
+                          mobileNumberError
+                            ? "border-red-500"
+                            : "border-gray-300"
+                        }`}
+                        pattern="[0-9]{10}"
+                        maxLength="10"
+                      />
+                    </div>
+                    {mobileNumberError && (
+                      <p className="mt-1 text-sm text-red-600">
+                        {mobileNumberError}
+                      </p>
+                    )}
+                  </>
                 ) : (
                   <div className="flex items-center mt-1">
                     <Phone className="w-4 h-4 text-gray-400 mr-2" />
@@ -742,7 +852,6 @@ const ProfileSection = () => {
                     onChange={(e) =>
                       handleInputChange("number", e.target.value)
                     }
-                    // Continuation from where the code stopped - Marriage Information section completion
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                   />
                 ) : (
@@ -796,16 +905,27 @@ const ProfileSection = () => {
                 <>
                   <div>
                     <label className="text-sm font-medium text-gray-500">
-                      Current Location
+                      Current Location <span className="text-red-500">*</span>
                     </label>
-                    <input
-                      type="text"
-                      value={editedData.currlocation || ""}
-                      onChange={(e) =>
-                        handleInputChange("currlocation", e.target.value)
-                      }
+                    <select
                       className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    />
+                      onChange={(e) => handleLocationChange(e.target.value)}
+                      value={editedData.currlocation || ""}
+                      required
+                    >
+                      <option value="">Select Current Location</option>
+                      <option value="in_manpur">In Manpur</option>
+                      <option value="in_gaya_outside_manpur">
+                        In Gaya outside Manpur
+                      </option>
+                      <option value="in_bihar_outside_gaya">
+                        In Bihar outside Gaya
+                      </option>
+                      <option value="in_india_outside_bihar">
+                        In India outside Bihar
+                      </option>
+                      <option value="outside_india">Outside India</option>
+                    </select>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
@@ -816,7 +936,10 @@ const ProfileSection = () => {
                         type="text"
                         value={editedData.apartment || ""}
                         onChange={(e) =>
-                          handleInputChange("apartment", e.target.value)
+                          handleInputChange(
+                            "apartment",
+                            capitalizeEachWord(e.target.value)
+                          )
                         }
                         className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                       />
@@ -829,7 +952,10 @@ const ProfileSection = () => {
                         type="text"
                         value={editedData.floor || ""}
                         onChange={(e) =>
-                          handleInputChange("floor", e.target.value)
+                          handleInputChange(
+                            "floor",
+                            capitalizeEachWord(e.target.value)
+                          )
                         }
                         className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                       />
@@ -844,37 +970,48 @@ const ProfileSection = () => {
                         type="text"
                         value={editedData.room || ""}
                         onChange={(e) =>
-                          handleInputChange("room", e.target.value)
+                          handleInputChange(
+                            "room",
+                            capitalizeEachWord(e.target.value)
+                          )
                         }
                         className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                       />
                     </div>
                     <div>
                       <label className="text-sm font-medium text-gray-500">
-                        Street
+                        Street <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="text"
                         value={editedData.street || ""}
                         onChange={(e) =>
-                          handleInputChange("street", e.target.value)
+                          handleInputChange(
+                            "street",
+                            capitalizeEachWord(e.target.value)
+                          )
                         }
                         className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                        required
                       />
                     </div>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="text-sm font-medium text-gray-500">
-                        City
+                        City <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="text"
                         value={editedData.city || ""}
                         onChange={(e) =>
-                          handleInputChange("city", e.target.value)
+                          handleInputChange(
+                            "city",
+                            capitalizeEachWord(e.target.value)
+                          )
                         }
                         className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                        required
                       />
                     </div>
                     <div>
@@ -885,7 +1022,10 @@ const ProfileSection = () => {
                         type="text"
                         value={editedData.postoffice || ""}
                         onChange={(e) =>
-                          handleInputChange("postoffice", e.target.value)
+                          handleInputChange(
+                            "postoffice",
+                            capitalizeEachWord(e.target.value)
+                          )
                         }
                         className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                       />
@@ -894,43 +1034,55 @@ const ProfileSection = () => {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="text-sm font-medium text-gray-500">
-                        District
+                        District <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="text"
                         value={editedData.district || ""}
                         onChange={(e) =>
-                          handleInputChange("district", e.target.value)
+                          handleInputChange(
+                            "district",
+                            capitalizeEachWord(e.target.value)
+                          )
                         }
                         className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                        required
                       />
                     </div>
                     <div>
                       <label className="text-sm font-medium text-gray-500">
-                        State
+                        State <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="text"
                         value={editedData.state || ""}
                         onChange={(e) =>
-                          handleInputChange("state", e.target.value)
+                          handleInputChange(
+                            "state",
+                            capitalizeEachWord(e.target.value)
+                          )
                         }
                         className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                        required
                       />
                     </div>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="text-sm font-medium text-gray-500">
-                        Country
+                        Country <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="text"
                         value={editedData.country || ""}
                         onChange={(e) =>
-                          handleInputChange("country", e.target.value)
+                          handleInputChange(
+                            "country",
+                            capitalizeEachWord(e.target.value)
+                          )
                         }
                         className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                        required
                       />
                     </div>
                     <div>
@@ -944,6 +1096,8 @@ const ProfileSection = () => {
                           handleInputChange("pin", e.target.value)
                         }
                         className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                        pattern="[0-9]{6}"
+                        maxLength="6"
                       />
                     </div>
                   </div>
@@ -955,7 +1109,10 @@ const ProfileSection = () => {
                       type="text"
                       value={editedData.landmark || ""}
                       onChange={(e) =>
-                        handleInputChange("landmark", e.target.value)
+                        handleInputChange(
+                          "landmark",
+                          capitalizeEachWord(e.target.value)
+                        )
                       }
                       className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     />
@@ -971,7 +1128,10 @@ const ProfileSection = () => {
                     <div className="flex items-center mt-1">
                       <MapPin className="w-4 h-4 text-gray-400 mr-2" />
                       <p className="text-gray-900">
-                        {userData.address?.currlocation || "Not provided"}
+                        {userData.address?.currlocation
+                          ?.replace(/_/g, " ")
+                          .replace(/\b\w/g, (c) => c.toUpperCase()) ||
+                          "Not provided"}
                       </p>
                     </div>
                   </div>
@@ -1010,7 +1170,10 @@ const ProfileSection = () => {
                     type="text"
                     value={editedData.category || ""}
                     onChange={(e) =>
-                      handleInputChange("category", e.target.value)
+                      handleInputChange(
+                        "category",
+                        capitalizeEachWord(e.target.value)
+                      )
                     }
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                   />
@@ -1026,7 +1189,12 @@ const ProfileSection = () => {
                   <input
                     type="text"
                     value={editedData.job || ""}
-                    onChange={(e) => handleInputChange("job", e.target.value)}
+                    onChange={(e) =>
+                      handleInputChange(
+                        "job",
+                        capitalizeEachWord(e.target.value)
+                      )
+                    }
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                   />
                 ) : (
@@ -1044,7 +1212,10 @@ const ProfileSection = () => {
                     type="text"
                     value={editedData.specialization || ""}
                     onChange={(e) =>
-                      handleInputChange("specialization", e.target.value)
+                      handleInputChange(
+                        "specialization",
+                        capitalizeEachWord(e.target.value)
+                      )
                     }
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                   />
@@ -1100,7 +1271,10 @@ const ProfileSection = () => {
                     type="text"
                     value={editedData.qualification || ""}
                     onChange={(e) =>
-                      handleInputChange("qualification", e.target.value)
+                      handleInputChange(
+                        "qualification",
+                        capitalizeEachWord(e.target.value)
+                      )
                     }
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                   />
@@ -1125,6 +1299,7 @@ const ProfileSection = () => {
     </div>
   );
 };
+
 // Password Change Modal Component (continuation)
 const PasswordChangeModal = ({ isOpen, onClose }) => {
   const { backendUrl, utoken } = useContext(AppContext);
@@ -1183,8 +1358,6 @@ const PasswordChangeModal = ({ isOpen, onClose }) => {
     setIsLoading(true);
 
     try {
-      // Get context values
-
       // Make API call to change password
       const response = await axios.post(
         `${backendUrl}/api/user/change-password`,
@@ -1200,7 +1373,7 @@ const PasswordChangeModal = ({ isOpen, onClose }) => {
       );
 
       if (response.data.success) {
-        alert("Password changed successfully!");
+        toast.success("Password changed successfully!");
         handleClose();
       } else {
         setErrors({

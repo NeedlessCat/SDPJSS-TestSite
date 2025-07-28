@@ -10,6 +10,7 @@ import {
   Mail,
   CreditCard,
   DollarSign,
+  Clock, // Added for previous donations icon
 } from "lucide-react";
 import axios from "axios";
 import { useContext } from "react";
@@ -40,6 +41,13 @@ const Receipt = () => {
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState([]);
   const [khandans, setKhandans] = useState([]);
+  const [courierCharges, setCourierCharges] = useState([]);
+  const [userPreviousDonations, setUserPreviousDonations] = useState([]); // <-- New state for previous donations
+
+  // Add these states for the new user form
+  const [isEldest, setIsEldest] = useState(false);
+  const [usersInSelectedKhandan, setUsersInSelectedKhandan] = useState([]); // To store users of the selected khandan for father dropdown
+
   const [remarks, setRemarks] = useState("");
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [newUser, setNewUser] = useState({
@@ -47,6 +55,7 @@ const Receipt = () => {
     gender: "",
     dob: "",
     khandanid: "",
+    fatherid: "", // Now properly handled
     contact: {
       email: "",
       mobileno: {
@@ -82,7 +91,7 @@ const Receipt = () => {
 
   const genderOptions = ["male", "female", "other"];
 
-  // Validation helpers
+  // Validation helpers (Keep them as is)
   const validateEmail = (email) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
@@ -92,20 +101,20 @@ const Receipt = () => {
     return /^\d{10}$/.test(mobile);
   };
 
-  // Validation message component
+  // Validation message component (Keep it as is)
   const ValidationMessage = ({ show, message }) => {
     if (!show) return null;
     return <p className="text-red-500 text-sm mt-1">{message}</p>;
   };
 
-  // Validation state
+  // Validation state (Keep them as is)
   const emailError =
     newUser.contact.email && !validateEmail(newUser.contact.email);
   const mobileError =
     newUser.contact.mobileno.number &&
     !validateMobile(newUser.contact.mobileno.number);
 
-  // Location options with auto-fill data
+  // Location options with auto-fill data (Keep them as is)
   const locationOptions = [
     {
       value: "in_manpur",
@@ -116,6 +125,8 @@ const Receipt = () => {
         district: "Gaya",
         country: "India",
         pin: "823003",
+        postoffice: "Buniyadganj",
+        street: "Manpur",
       },
     },
     {
@@ -127,6 +138,8 @@ const Receipt = () => {
         district: "Gaya",
         country: "India",
         pin: "",
+        postoffice: "",
+        street: "",
       },
     },
     {
@@ -138,6 +151,8 @@ const Receipt = () => {
         district: "",
         country: "India",
         pin: "",
+        postoffice: "",
+        street: "",
       },
     },
     {
@@ -149,6 +164,8 @@ const Receipt = () => {
         district: "",
         country: "India",
         pin: "",
+        postoffice: "",
+        street: "",
       },
     },
     {
@@ -160,10 +177,139 @@ const Receipt = () => {
         district: "",
         country: "",
         pin: "",
+        postoffice: "",
+        street: "",
       },
     },
   ];
 
+  // Helper to capitalize each word for fullname and address fields
+  const capitalizeEachWord = (str) => {
+    if (!str) return "";
+    return str
+      .split(" ")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(" ");
+  };
+
+  // Replace the existing handleKhandanChangeForNewUser function
+  const handleKhandanChangeForNewUser = (khandanId) => {
+    setNewUser((prev) => ({ ...prev, khandanid: khandanId }));
+    setNewUser((prev) => ({ ...prev, fatherid: "" })); // Reset fatherId on khandan change
+    setIsEldest(false); // Reset eldest on khandan change
+    console.log(userList);
+    if (khandanId) {
+      // Filter from the complete userList (not filteredUsers) based on selected khandan and gender
+      const allUsersInKhandan = userList.filter(
+        (user) => user.khandanid._id === khandanId && user.gender === "male"
+      );
+      setUsersInSelectedKhandan(allUsersInKhandan);
+    } else {
+      setUsersInSelectedKhandan([]);
+    }
+  };
+
+  // Helper to convert amount to words
+  const convertAmountToWords = (amount) => {
+    const ones = [
+      "",
+      "One",
+      "Two",
+      "Three",
+      "Four",
+      "Five",
+      "Six",
+      "Seven",
+      "Eight",
+      "Nine",
+    ];
+    const teens = [
+      "Ten",
+      "Eleven",
+      "Twelve",
+      "Thirteen",
+      "Fourteen",
+      "Fifteen",
+      "Sixteen",
+      "Seventeen",
+      "Eighteen",
+      "Nineteen",
+    ];
+    const tens = [
+      "",
+      "",
+      "Twenty",
+      "Thirty",
+      "Forty",
+      "Fifty",
+      "Sixty",
+      "Seventy",
+      "Eighty",
+      "Ninety",
+    ];
+
+    const numToWords = (num) => {
+      if (num === 0) return "";
+      if (num < 10) return ones[num];
+      if (num < 20) return teens[num - 10];
+      const digit = num % 10;
+      return `${tens[Math.floor(num / 10)]} ${ones[digit]}`.trim();
+    };
+
+    if (amount === 0) return "Zero Rupees Only";
+    let words = "";
+    let num = Math.floor(amount);
+
+    if (num >= 10000000) {
+      words += `${numToWords(Math.floor(num / 10000000))} Crore `;
+      num %= 10000000;
+    }
+    if (num >= 100000) {
+      words += `${numToWords(Math.floor(num / 100000))} Lakh `;
+      num %= 100000;
+    }
+    if (num >= 1000) {
+      words += `${numToWords(Math.floor(num / 1000))} Thousand `;
+      num %= 1000;
+    }
+    if (num >= 100) {
+      words += `${numToWords(Math.floor(num / 100))} Hundred `;
+      num %= 100;
+    }
+    if (num > 0) {
+      words += numToWords(num);
+    }
+
+    return `${words.trim()} Rupees Only`;
+  };
+
+  // New: Handle eldest checkbox for new user
+  const handleEldestChangeForNewUser = (checked) => {
+    setIsEldest(checked);
+    if (checked && newUser.khandanid) {
+      setNewUser((prev) => ({ ...prev, fatherid: newUser.khandanid }));
+    } else {
+      setNewUser((prev) => ({ ...prev, fatherid: "" }));
+    }
+  };
+
+  const fetchCourierCharges = async () => {
+    try {
+      const response = await axios.get(
+        backendUrl + "/api/admin/courier-charges",
+        {
+          headers: { aToken },
+        }
+      );
+      if (response.data.success) {
+        setCourierCharges(response.data.courierCharges || []);
+      }
+    } catch (error) {
+      console.error("Error fetching courier charges:", error);
+    }
+  };
+
+  // Effect to load initial data
   useEffect(() => {
     const fetchData = async () => {
       if (aToken) {
@@ -171,8 +317,8 @@ const Receipt = () => {
         try {
           await getUserList();
           await fetchCategories();
+          await fetchCourierCharges();
           const khandanData = await getFamilyList();
-          console.log("Data: ", khandanData);
           if (khandanData && khandanData.success) {
             setKhandans(khandanData.families || []);
           }
@@ -187,7 +333,7 @@ const Receipt = () => {
     fetchData();
   }, [aToken]);
 
-  // Load Razorpay script
+  // Load Razorpay script (Keep it as is)
   const loadRazorpayScript = () => {
     return new Promise((resolve) => {
       const script = document.createElement("script");
@@ -198,6 +344,7 @@ const Receipt = () => {
     });
   };
 
+  // Fetch categories (Keep it as is)
   const fetchCategories = async () => {
     try {
       const response = await axios.get(backendUrl + "/api/admin/categories", {
@@ -213,6 +360,27 @@ const Receipt = () => {
     }
   };
 
+  const getCourierChargeForUser = (user) => {
+    if (!user?.address?.currlocation) return 0;
+
+    // Map user's current location to courier charge regions
+    const locationToCourierRegionMap = {
+      in_gaya_outside_manpur: "in_gaya_outside_manpur",
+      in_bihar_outside_gaya: "in_bihar_outside_gaya",
+      in_india_outside_bihar: "in_india_outside_bihar",
+      outside_india: "outside_india",
+    };
+
+    const courierRegion = locationToCourierRegionMap[user.address.currlocation];
+    if (!courierRegion) return 0; // No charge for "in_manpur"
+
+    const courierCharge = courierCharges.find(
+      (charge) => charge.region === courierRegion
+    );
+    return courierCharge ? courierCharge.amount : 0;
+  };
+
+  // Load donations (Keep it as is)
   const loadDonations = async () => {
     try {
       await getDonationList();
@@ -221,22 +389,37 @@ const Receipt = () => {
     }
   };
 
-  // Get khandan name by ID
+  // Get khandan name by ID (Keep it as is)
   const getKhandanName = (khandanId) => {
-    console.log("khandans: ", khandans);
     const khandan = khandans.find((k) => k._id === khandanId._id);
-    console.log(khandanId);
     return khandan ? khandan.name : "Unknown Khandan";
   };
 
-  // Filter users based on search
+  // Helper function to format khandan option display for `Add New User` modal
+  const formatKhandanOption = (khandan) => {
+    let displayText = khandan.name;
+    if (khandan.address.landmark) {
+      displayText += `, ${khandan.address.landmark}`;
+    }
+    if (khandan.address.street) {
+      displayText += `, ${khandan.address.street}`;
+    }
+    displayText += ` (${khandan.khandanid})`;
+    return displayText;
+  };
+
+  // Filter users based on search (Keep it as is)
   useEffect(() => {
     if (userSearch.length > 0) {
       const filtered = userList.filter(
         (user) =>
           user.fullname.toLowerCase().includes(userSearch.toLowerCase()) ||
-          user.contact.mobileno.number.includes(userSearch) ||
-          user.contact.email.toLowerCase().includes(userSearch.toLowerCase()) ||
+          (user.contact.mobileno &&
+            user.contact.mobileno.number.includes(userSearch)) ||
+          (user.contact.email &&
+            user.contact.email
+              .toLowerCase()
+              .includes(userSearch.toLowerCase())) ||
           getKhandanName(user.khandanid)
             .toLowerCase()
             .includes(userSearch.toLowerCase())
@@ -249,7 +432,22 @@ const Receipt = () => {
     }
   }, [userSearch, userList, khandans]);
 
-  // Get available categories (exclude already selected ones)
+  // --- NEW ---
+  // Effect to filter previous donations when a user is selected
+  // Effect to filter previous donations when a user is selected
+  useEffect(() => {
+    if (selectedUser && donationList) {
+      const previous = donationList
+        .filter((donation) => donation.userId?._id === selectedUser._id)
+        .sort((a, b) => new Date(b.date) - new Date(a.date)) // Sort by most recent first
+        .slice(0, 2); // <-- MODIFIED: Get only the last 2 donations
+      setUserPreviousDonations(previous);
+    } else {
+      setUserPreviousDonations([]);
+    }
+  }, [selectedUser, donationList]);
+
+  // Get available categories (exclude already selected ones) (Keep it as is)
   const getAvailableCategories = () => {
     const selectedCategoryIds = donations.map((d) => d.categoryId);
     return categories.filter(
@@ -257,7 +455,7 @@ const Receipt = () => {
     );
   };
 
-  // Handle user selection
+  // Handle user selection (Keep it as is)
   const handleUserSelect = (user) => {
     setSelectedUser(user);
     setUserSearch("");
@@ -268,7 +466,7 @@ const Receipt = () => {
     }
   };
 
-  // Handle add donation
+  // Handle add donation (Keep it as is)
   const handleAddDonation = () => {
     if (!selectedCategory || !quantity) {
       alert("Please select category and enter quantity");
@@ -291,19 +489,33 @@ const Receipt = () => {
       packet: category.packet,
     };
 
-    console.log("New DDonaion: ", newDonation);
-
     setDonations([...donations, newDonation]);
     setSelectedCategory("");
     setQuantity("");
   };
 
-  // Remove donation
+  // Remove donation (Keep it as is)
   const removeDonation = (id) => {
     setDonations(donations.filter((donation) => donation.id !== id));
   };
 
-  // Calculate totals
+  // --- NEW ---
+  // Check if user is in a location where courier is not an option
+  const isLocalUser =
+    selectedUser &&
+    ["in_manpur", "in_gaya_outside_manpur"].includes(
+      selectedUser.address.currlocation
+    );
+
+  // --- NEW ---
+  // Effect to reset `willCome` to "YES" if a local user is selected
+  useEffect(() => {
+    if (isLocalUser) {
+      setWillCome("YES");
+    }
+  }, [isLocalUser]);
+
+  // Calculate totals (Keep it as is)
   const totalAmount = donations.reduce(
     (sum, donation) => sum + donation.amount,
     0
@@ -313,13 +525,16 @@ const Receipt = () => {
     0
   );
   const totalPackets = donations.reduce(
-    (count, donation) => count + (donation.packet ? 1 : 0),
+    (count, donation) => count + (donation.packet ? donation.quantity : 0),
     0
   );
-  const courierCharge = willCome === "NO" ? 600 : 0;
+  const courierCharge =
+    willCome === "NO" && selectedUser
+      ? getCourierChargeForUser(selectedUser)
+      : 0;
   const netPayableAmount = totalAmount + courierCharge;
 
-  // Handle nested object updates for newUser
+  // Handle nested object updates for newUser (Keep it as is)
   const updateNestedField = (path, value) => {
     const pathArray = path.split(".");
     setNewUser((prev) => {
@@ -336,7 +551,7 @@ const Receipt = () => {
     });
   };
 
-  // Handle location change and auto-fill address
+  // Handle location change and auto-fill address (Keep it as is)
   const handleLocationChange = (locationValue) => {
     updateNestedField("address.currlocation", locationValue);
 
@@ -352,26 +567,26 @@ const Receipt = () => {
     }
   };
 
-  // Updated handleRegisterUser function to align with backend validation
+  // Updated handleRegisterUser function (Keep as is)
   const handleRegisterUser = async () => {
     try {
       setLoading(true);
 
-      // Validate required fields (matching backend validation)
+      // Validate required fields
       if (
         !newUser.fullname ||
         !newUser.gender ||
         !newUser.dob ||
         !newUser.khandanid ||
-        !newUser.address.currlocation // This is required in backend
+        !newUser.address.currlocation ||
+        (!isEldest && !newUser.fatherid)
       ) {
         alert(
-          "Please fill in all required fields: fullname, gender, dob, khandan, and address"
+          "Please fill in all required fields: fullname, gender, dob, khandan, father (or check eldest), and address"
         );
         return;
       }
 
-      // Validate that at least one contact method is provided
       const hasEmail =
         newUser.contact.email && newUser.contact.email.trim() !== "";
       const hasMobile =
@@ -382,46 +597,33 @@ const Receipt = () => {
         alert("At least one contact method (email or mobile) is required");
         return;
       }
-
-      // Validate mobile number format if provided
       if (hasMobile && !validateMobile(newUser.contact.mobileno.number)) {
         alert("Please enter a valid 10-digit mobile number");
         return;
       }
-
-      // Validate email format if provided
       if (hasEmail && !validateEmail(newUser.contact.email)) {
         alert("Please enter a valid email address");
         return;
       }
-
-      // Prepare userData for backend - remove the username generation
       const userData = {
         fullname: newUser.fullname,
         gender: newUser.gender,
         dob: newUser.dob,
         khandanid: newUser.khandanid,
-        email: hasEmail ? newUser.contact.email : undefined, // Backend expects email at root level
-        mobile: hasMobile ? newUser.contact.mobileno : undefined, // Backend expects mobile at root level
+        fatherid: newUser.fatherid,
+        email: hasEmail ? newUser.contact.email : undefined,
+        mobile: hasMobile ? newUser.contact.mobileno : undefined,
         address: newUser.address,
       };
 
-      // Use the correct endpoint - should match your backend route
       const response = await axios.post(
-        backendUrl + "/api/admin/register", // or "/api/user/register" - check your backend route
+        backendUrl + "/api/admin/register",
         userData,
-        {
-          headers: {
-            aToken,
-          },
-        }
+        { headers: { aToken } }
       );
 
       if (response.data.success) {
-        // Backend returns the saved user data
-        const { token, userId, username, notifications } = response.data;
-
-        // Create user object to match your userList format
+        const { userId, username, notifications } = response.data;
         const newUserData = {
           _id: userId,
           fullname: newUser.fullname,
@@ -429,28 +631,21 @@ const Receipt = () => {
           gender: newUser.gender,
           dob: newUser.dob,
           khandanid: newUser.khandanid,
+          fatherid: newUser.fatherid,
           contact: newUser.contact,
           address: newUser.address,
         };
-
-        // Refresh user list from context
         await getUserList();
-
-        // Select the new user
         handleUserSelect(newUserData);
-
-        // Reset form
         setNewUser({
           fullname: "",
           gender: "",
           dob: "",
           khandanid: "",
+          fatherid: "",
           contact: {
             email: "",
-            mobileno: {
-              code: "+91",
-              number: "",
-            },
+            mobileno: { code: "+91", number: "" },
             whatsappno: "",
           },
           address: {
@@ -467,15 +662,11 @@ const Receipt = () => {
             floor: "",
             room: "",
           },
-          profession: {
-            category: "",
-            job: "",
-            specialization: "",
-          },
+          profession: { category: "", job: "", specialization: "" },
         });
+        setIsEldest(false);
+        setUsersInSelectedKhandan([]);
         setShowAddUserForm(false);
-
-        // Show success message with notifications
         alert(
           `User registered successfully! ${
             notifications ? notifications.join(", ") : ""
@@ -496,27 +687,21 @@ const Receipt = () => {
     }
   };
 
-  // Handle Razorpay payment
+  // Handle Razorpay payment (Keep as is)
   const handleRazorpayPayment = async (orderData) => {
     try {
       setPaymentLoading(true);
-
-      // Load Razorpay script
       const scriptLoaded = await loadRazorpayScript();
       if (!scriptLoaded) {
         alert("Failed to load payment gateway. Please try again.");
         return false;
       }
 
-      // Create payment order
       const response = await axios.post(
         backendUrl + "/api/admin/create-donation-order",
         orderData,
         {
-          headers: {
-            aToken,
-            "Content-Type": "application/json",
-          },
+          headers: { aToken, "Content-Type": "application/json" },
         }
       );
 
@@ -524,12 +709,9 @@ const Receipt = () => {
         alert(`Error: ${response.data.message}`);
         return false;
       }
-
       const { order, donationId } = response.data;
-
-      // Configure Razorpay options
       const options = {
-        key: import.meta.env.VITE_RAZORPAY_KEY_ID, // Replace with your Razorpay key ID
+        key: import.meta.env.VITE_RAZORPAY_KEY_ID,
         amount: order.amount,
         currency: order.currency,
         name: "Donation Portal",
@@ -537,7 +719,6 @@ const Receipt = () => {
         order_id: order.id,
         handler: async (response) => {
           try {
-            // Verify payment
             const verifyResponse = await axios.post(
               backendUrl + "/api/admin/verify-donation-payment",
               {
@@ -546,21 +727,12 @@ const Receipt = () => {
                 razorpay_signature: response.razorpay_signature,
                 donationId: donationId,
               },
-              {
-                headers: {
-                  aToken,
-                  "Content-Type": "application/json",
-                },
-              }
+              { headers: { aToken, "Content-Type": "application/json" } }
             );
 
             if (verifyResponse.data.success) {
               alert("Payment successful! Donation recorded.");
-
-              // Refresh donation list
               await getDonationList();
-
-              // Reset form
               resetForm();
             } else {
               alert(
@@ -577,16 +749,9 @@ const Receipt = () => {
           email: selectedUser?.contact?.email || "",
           contact: selectedUser?.contact?.mobileno?.number || "",
         },
-        theme: {
-          color: "#16a34a",
-        },
-        modal: {
-          ondismiss: () => {
-            alert("Payment cancelled");
-          },
-        },
+        theme: { color: "#16a34a" },
+        modal: { ondismiss: () => alert("Payment cancelled") },
       };
-
       const paymentObject = new window.Razorpay(options);
       paymentObject.open();
       return true;
@@ -599,7 +764,7 @@ const Receipt = () => {
     }
   };
 
-  // Reset form after successful submission
+  // Reset form (Keep as is)
   const resetForm = () => {
     setSelectedUser(null);
     setUserSearch("");
@@ -610,7 +775,7 @@ const Receipt = () => {
     setRemarks("");
   };
 
-  // Handle form submission
+  // Handle form submission (Keep as is)
   const handleSubmit = async () => {
     if (!selectedUser) {
       alert("Please select a user");
@@ -631,9 +796,6 @@ const Receipt = () => {
 
     try {
       setLoading(true);
-
-      // Prepare order data according to API expectations
-      console.log("Admin Dontions: ", donations);
       const orderData = {
         userId: selectedUser._id,
         list: donations.map((donation) => ({
@@ -655,35 +817,23 @@ const Receipt = () => {
       };
 
       if (paymentMethod === "Cash") {
-        // Handle cash payment
         const response = await axios.post(
           backendUrl + "/api/admin/create-donation-order",
           orderData,
           {
-            headers: {
-              aToken,
-              "Content-Type": "application/json",
-            },
+            headers: { aToken, "Content-Type": "application/json" },
           }
         );
-
         if (response.data.success) {
           alert("Cash donation recorded successfully!");
-
-          // Refresh donation list
           await getDonationList();
-
-          // Reset form
           resetForm();
         } else {
           alert(`Error: ${response.data.message}`);
         }
       } else if (paymentMethod === "Online") {
-        // Handle online payment
         const paymentSuccess = await handleRazorpayPayment(orderData);
-        if (!paymentSuccess) {
-          return;
-        }
+        if (!paymentSuccess) return;
       }
     } catch (error) {
       console.error("Error submitting donation:", error);
@@ -743,8 +893,8 @@ const Receipt = () => {
                               {user.fullname}
                             </div>
                             <div className="text-sm text-gray-600">
-                              {user.contact.mobileno.code}{" "}
-                              {user.contact.mobileno.number} •{" "}
+                              {user.contact.mobileno?.code}{" "}
+                              {user.contact.mobileno?.number} •{" "}
                               {user.contact.email}
                             </div>
                             <div className="text-xs text-blue-600">
@@ -786,8 +936,8 @@ const Receipt = () => {
                       <div className="text-sm text-gray-600 space-y-1">
                         <div className="flex items-center gap-2">
                           <Phone className="h-3 w-3" />
-                          {selectedUser.contact.mobileno.code}{" "}
-                          {selectedUser.contact.mobileno.number}
+                          {selectedUser.contact.mobileno?.code}{" "}
+                          {selectedUser.contact.mobileno?.number}
                         </div>
                         <div className="flex items-center gap-2">
                           <Mail className="h-3 w-3" />
@@ -820,7 +970,7 @@ const Receipt = () => {
             )}
           </div>
 
-          {/* Add User Form Modal */}
+          {/* Add User Form Modal (Keep As Is) */}
           {showAddUserForm && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
               <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
@@ -834,7 +984,6 @@ const Receipt = () => {
                       <X className="h-5 w-5" />
                     </button>
                   </div>
-
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -845,7 +994,10 @@ const Receipt = () => {
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                         value={newUser.fullname}
                         onChange={(e) =>
-                          setNewUser({ ...newUser, fullname: e.target.value })
+                          setNewUser({
+                            ...newUser,
+                            fullname: capitalizeEachWord(e.target.value),
+                          })
                         }
                         required
                       />
@@ -897,357 +1049,63 @@ const Receipt = () => {
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                         value={newUser.khandanid}
                         onChange={(e) =>
-                          setNewUser({ ...newUser, khandanid: e.target.value })
+                          handleKhandanChangeForNewUser(e.target.value)
                         }
                         required
                       >
                         <option value="">Select Khandan</option>
                         {khandans.map((khandan) => (
                           <option key={khandan._id} value={khandan._id}>
-                            {khandan.khandan}
+                            {formatKhandanOption(khandan)}
                           </option>
                         ))}
                       </select>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Email{" "}
-                          <span className="text-blue-500 text-xs">
-                            (at least one contact required)
-                          </span>
+                    <div className="w-full">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-1">
+                        <label className="text-sm font-medium text-gray-700">
+                          Father <span className="text-red-500">*</span>
                         </label>
-                        <input
-                          type="email"
-                          className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
-                            emailError ? "border-red-500" : "border-gray-300"
-                          }`}
-                          value={newUser.contact.email}
-                          onChange={(e) =>
-                            updateNestedField("contact.email", e.target.value)
-                          }
-                        />
+                        {newUser.khandanid && (
+                          <label className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
+                            <input
+                              type="checkbox"
+                              checked={isEldest}
+                              onChange={(e) =>
+                                handleEldestChangeForNewUser(e.target.checked)
+                              }
+                              className="w-4 h-4 text-green-600 rounded"
+                            />
+                            <span>Eldest</span>
+                          </label>
+                        )}
                       </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Mobile Number
-                        </label>
-                        <div className="flex">
-                          <select
-                            className="w-20 px-2 py-2 border border-gray-300 rounded-l-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                            value={newUser.contact.mobileno.code}
-                            onChange={(e) =>
-                              updateNestedField(
-                                "contact.mobileno.code",
-                                e.target.value
-                              )
-                            }
-                          >
-                            <option value="+91">+91</option>
-                          </select>
-                          <input
-                            type="tel"
-                            className="flex-1 px-3 py-2 border border-gray-300 rounded-r-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                            value={newUser.contact.mobileno.number}
-                            onChange={(e) =>
-                              updateNestedField(
-                                "contact.mobileno.number",
-                                e.target.value
-                              )
-                            }
-                            placeholder="Mobile number"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        WhatsApp Number
-                      </label>
-                      <input
-                        type="tel"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                        value={newUser.contact.whatsappno}
+                      <select
+                        className="border border-zinc-300 rounded-lg w-full p-3 text-sm sm:text-base focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all disabled:bg-gray-100"
                         onChange={(e) =>
-                          updateNestedField(
-                            "contact.whatsappno",
-                            e.target.value
-                          )
+                          setNewUser({ ...newUser, fatherid: e.target.value })
                         }
-                        placeholder="WhatsApp number"
-                      />
-                    </div>
-
-                    {/* Address Section */}
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-medium text-gray-800 border-b pb-2">
-                        Address Details
-                      </h3>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Current Location *
-                        </label>
-                        <select
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                          value={newUser.address.currlocation}
-                          onChange={(e) => handleLocationChange(e.target.value)}
-                          required
-                        >
-                          <option value="">Select Location</option>
-                          {locationOptions.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Country
-                          </label>
-                          <input
-                            type="text"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                            value={newUser.address.country}
-                            onChange={(e) =>
-                              updateNestedField(
-                                "address.country",
-                                e.target.value
-                              )
-                            }
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            District
-                          </label>
-                          <input
-                            type="text"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                            value={newUser.address.district}
-                            onChange={(e) =>
-                              updateNestedField(
-                                "address.district",
-                                e.target.value
-                              )
-                            }
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            City
-                          </label>
-                          <input
-                            type="text"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                            value={newUser.address.city}
-                            onChange={(e) =>
-                              updateNestedField("address.city", e.target.value)
-                            }
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            State
-                          </label>
-                          <input
-                            type="text"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                            value={newUser.address.state}
-                            onChange={(e) =>
-                              updateNestedField("address.state", e.target.value)
-                            }
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Post Office
-                          </label>
-                          <input
-                            type="text"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                            value={newUser.address.postoffice}
-                            onChange={(e) =>
-                              updateNestedField(
-                                "address.postoffice",
-                                e.target.value
-                              )
-                            }
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            PIN Code
-                          </label>
-                          <input
-                            type="text"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                            value={newUser.address.pin}
-                            onChange={(e) =>
-                              updateNestedField("address.pin", e.target.value)
-                            }
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Street Address
-                        </label>
-                        <input
-                          type="text"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                          value={newUser.address.street}
-                          onChange={(e) =>
-                            updateNestedField("address.street", e.target.value)
-                          }
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Apartment
-                          </label>
-                          <input
-                            type="text"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                            value={newUser.address.apartment}
-                            onChange={(e) =>
-                              updateNestedField(
-                                "address.apartment",
-                                e.target.value
-                              )
-                            }
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Floor
-                          </label>
-                          <input
-                            type="text"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                            value={newUser.address.floor}
-                            onChange={(e) =>
-                              updateNestedField("address.floor", e.target.value)
-                            }
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Room
-                          </label>
-                          <input
-                            type="text"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                            value={newUser.address.room}
-                            onChange={(e) =>
-                              updateNestedField("address.room", e.target.value)
-                            }
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Landmark
-                        </label>
-                        <input
-                          type="text"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                          value={newUser.address.landmark}
-                          onChange={(e) =>
-                            updateNestedField(
-                              "address.landmark",
-                              e.target.value
-                            )
-                          }
-                        />
-                      </div>
-                    </div>
-
-                    {/* Profession Section */}
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-medium text-gray-800 border-b pb-2">
-                        Profession Details (Optional)
-                      </h3>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Category
-                          </label>
-                          <input
-                            type="text"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                            value={newUser.profession.category}
-                            onChange={(e) =>
-                              updateNestedField(
-                                "profession.category",
-                                e.target.value
-                              )
-                            }
-                            placeholder="e.g., IT, Healthcare, Education"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Job Title
-                          </label>
-                          <input
-                            type="text"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                            value={newUser.profession.job}
-                            onChange={(e) =>
-                              updateNestedField(
-                                "profession.job",
-                                e.target.value
-                              )
-                            }
-                            placeholder="e.g., Software Engineer, Doctor"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Specialization
-                        </label>
-                        <input
-                          type="text"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                          value={newUser.profession.specialization}
-                          onChange={(e) =>
-                            updateNestedField(
-                              "profession.specialization",
-                              e.target.value
-                            )
-                          }
-                          placeholder="e.g., React.js, Cardiology, Mathematics"
-                        />
-                      </div>
+                        value={newUser.fatherid}
+                        disabled={isEldest || !newUser.khandanid}
+                        required={!isEldest}
+                      >
+                        <option value="">Select Father</option>
+                        {usersInSelectedKhandan.map((user) => (
+                          <option key={user._id} value={user._id}>
+                            {user.fullname} ({user._id})
+                          </option>
+                        ))}
+                      </select>
+                      {!isEldest && newUser.khandanid && (
+                        <p className="mt-2 text-xs text-red-600">
+                          {usersInSelectedKhandan.length === 0
+                            ? "No male users found. Check 'Eldest' if this is the first member."
+                            : "Select father. If not found, register father first."}
+                        </p>
+                      )}
                     </div>
                   </div>
-
                   <div className="flex gap-3 mt-6">
                     <button
                       onClick={() => setShowAddUserForm(false)}
@@ -1287,7 +1145,13 @@ const Receipt = () => {
                 />
                 <span className="text-sm font-medium">YES</span>
               </label>
-              <label className="flex items-center gap-2">
+              <label
+                className={`flex items-center gap-2 ${
+                  isLocalUser
+                    ? "cursor-not-allowed opacity-50"
+                    : "cursor-pointer"
+                }`}
+              >
                 <input
                   type="radio"
                   name="willCome"
@@ -1295,10 +1159,17 @@ const Receipt = () => {
                   checked={willCome === "NO"}
                   onChange={(e) => setWillCome(e.target.value)}
                   className="w-4 h-4 text-green-600 focus:ring-green-500"
+                  disabled={isLocalUser}
                 />
                 <span className="text-sm font-medium">NO</span>
               </label>
             </div>
+            {isLocalUser && (
+              <p className="text-xs text-gray-500 mt-2">
+                Courier option is not available for your location. Please select
+                "YES".
+              </p>
+            )}
           </div>
 
           {/* Courier Address */}
@@ -1317,6 +1188,62 @@ const Receipt = () => {
             </div>
           )}
 
+          {/* --- NEW: Previous Donations Section --- */}
+          {userPreviousDonations.length > 0 && (
+            <div className="bg-blue-50 rounded-lg p-4">
+              <h2 className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                <Clock className="h-5 w-5 text-blue-600" />
+                Previous Donations
+              </h2>
+              <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
+                {userPreviousDonations.map((donation) => (
+                  <div
+                    key={donation._id}
+                    className="bg-white border border-gray-200 p-3 rounded-lg shadow-sm"
+                  >
+                    <div className="flex justify-between items-center mb-2 pb-2 border-b">
+                      <span className="font-semibold text-blue-800">
+                        Date:{" "}
+                        {new Date(donation.date).toLocaleDateString("en-IN")}
+                      </span>
+                      <span className="font-bold text-gray-800">
+                        Total: ₹{donation.amount}
+                      </span>
+                    </div>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="text-left font-medium text-gray-600 py-1 px-2">
+                            Category
+                          </th>
+                          <th className="text-right font-medium text-gray-600 py-1 px-2">
+                            Qty
+                          </th>
+                          <th className="text-right font-medium text-gray-600 py-1 px-2">
+                            Amount
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {donation.list.map((item, index) => (
+                          <tr key={index}>
+                            <td className="py-1 px-2">{item.category}</td>
+                            <td className="text-right py-1 px-2">
+                              {item.number}
+                            </td>
+                            <td className="text-right py-1 px-2">
+                              ₹{item.amount}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Donation Section */}
           <div className="bg-gray-50 rounded-lg p-4">
             <h2 className="text-xl font-semibold text-gray-800 mb-4">
@@ -1331,7 +1258,17 @@ const Receipt = () => {
                 <select
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedCategory(e.target.value);
+                    const selectedCat = categories.find(
+                      (cat) => cat._id === e.target.value
+                    );
+                    if (selectedCat && selectedCat.packet) {
+                      setQuantity("1");
+                    } else {
+                      setQuantity(""); // Reset quantity for non-packet categories
+                    }
+                  }}
                 >
                   <option value="">Select Category</option>
                   {getAvailableCategories().map((category) => (
@@ -1350,10 +1287,18 @@ const Receipt = () => {
                   type="number"
                   min="1"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  value={selectedCategory.packet ? 1 : quantity}
+                  value={
+                    categories.find((cat) => cat._id === selectedCategory)
+                      ?.packet
+                      ? 1
+                      : quantity
+                  }
                   onChange={(e) => setQuantity(e.target.value)}
                   placeholder="Enter quantity"
-                  disabled={selectedCategory.packet}
+                  disabled={
+                    categories.find((cat) => cat._id === selectedCategory)
+                      ?.packet
+                  }
                 />
               </div>
 
@@ -1403,8 +1348,8 @@ const Receipt = () => {
                   <strong>Packet:</strong>{" "}
                   {categories.find((cat) => cat._id === selectedCategory)
                     ?.packet
-                    ? 1
-                    : 0}
+                    ? "Yes" // Changed from 1 to "Yes" for better readability
+                    : "No"}
                   <br />
                   <strong>Rate per unit:</strong> ₹{" "}
                   {categories.find((cat) => cat._id === selectedCategory)?.rate}
@@ -1458,7 +1403,7 @@ const Receipt = () => {
                           {donation.weight}
                         </td>
                         <td className="px-4 py-2 text-sm text-gray-900">
-                          {donation.packet ? 1 : 0}
+                          {donation.packet ? "Yes" : "No"}
                         </td>
                         <td className="px-4 py-2">
                           <button
@@ -1509,7 +1454,15 @@ const Receipt = () => {
                 </div>
                 <div className="flex justify-between">
                   <span>Courier Charge:</span>
-                  <span className="font-medium">₹{courierCharge}</span>
+                  <span className="font-medium">
+                    ₹{courierCharge}
+                    {willCome === "NO" && selectedUser && (
+                      <span className="text-xs text-gray-500 ml-1">
+                        ({selectedUser.address.currlocation?.replace(/_/g, " ")}
+                        )
+                      </span>
+                    )}
+                  </span>
                 </div>
                 <div className="flex justify-between border-t pt-2">
                   <span className="font-semibold">Net Payable Amount:</span>
@@ -1517,6 +1470,12 @@ const Receipt = () => {
                     ₹{netPayableAmount}
                   </span>
                 </div>
+                {netPayableAmount > 0 && (
+                  <div className="text-xs text-gray-600 capitalize pt-2 border-t">
+                    <strong>In Words:</strong>{" "}
+                    {convertAmountToWords(netPayableAmount)}
+                  </div>
+                )}
               </div>
             </div>
           </div>

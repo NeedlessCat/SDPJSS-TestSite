@@ -24,6 +24,7 @@ const NoticeBoard = () => {
     addNotice,
     updateNotice,
     deleteNotice,
+    capitalizeEachWord,
   } = useContext(AdminContext);
 
   const [showModal, setShowModal] = useState(false);
@@ -129,7 +130,10 @@ const NoticeBoard = () => {
     const { name, value } = e.target;
     setFormData((prev) => ({
       ...prev,
-      [name]: value,
+      [name]:
+        name === "title" || name === "author" || name === "category"
+          ? capitalizeEachWord(value)
+          : value,
     }));
   };
 

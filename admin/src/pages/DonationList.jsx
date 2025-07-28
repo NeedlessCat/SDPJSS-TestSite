@@ -87,6 +87,7 @@ const DonationList = () => {
   // Group donations by user
   const groupDonationsByUser = (donations) => {
     const grouped = {};
+    console.log("donations: ", donations);
     donations.forEach((donation) => {
       const userId = donation.userId._id;
       if (!grouped[userId]) {

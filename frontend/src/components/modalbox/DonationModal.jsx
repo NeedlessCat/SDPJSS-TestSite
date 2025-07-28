@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useContext } from "react";
 import {
   X,
   Heart,
@@ -8,7 +8,9 @@ import {
   Plus,
   Minus,
   QrCode,
+  Clock,
 } from "lucide-react";
+import { AppContext } from "../../context/AppContext";
 // import QRCode from "qrcode.react";
 
 const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
@@ -17,6 +19,7 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
   const [khandanDetails, setKhandanDetails] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [courierCharges, setCourierCharges] = useState([]);
   const [formData, setFormData] = useState({
     willCome: "YES",
     courierAddress: "",
@@ -47,9 +50,6 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
   // const paymentMethods = ["Cash", "Online", "QR Code"];
   const paymentMethods = ["Online"];
 
-  // const YOUR_UPI_ID = import.meta.env. ; // e.g., "example@upi"
-  // const YOUR_MERCHANT_NAME = "Durga Sthan Donations"; // e.g., "Durga Sthan"
-
   // Load Razorpay script
   const loadRazorpayScript = () => {
     return new Promise((resolve) => {
@@ -60,12 +60,127 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
       document.body.appendChild(script);
     });
   };
+  const { donations } = useContext(AppContext);
+
+  // Get last 2 donations
+  const previousDonations = donations ? donations.slice(0, 2) : [];
+
+  const convertAmountToWords = (amount) => {
+    const ones = [
+      "",
+      "one",
+      "two",
+      "three",
+      "four",
+      "five",
+      "six",
+      "seven",
+      "eight",
+      "nine",
+    ];
+    const teens = [
+      "ten",
+      "eleven",
+      "twelve",
+      "thirteen",
+      "fourteen",
+      "fifteen",
+      "sixteen",
+      "seventeen",
+      "eighteen",
+      "nineteen",
+    ];
+    const tens = [
+      "",
+      "",
+      "twenty",
+      "thirty",
+      "forty",
+      "fifty",
+      "sixty",
+      "seventy",
+      "eighty",
+      "ninety",
+    ];
+
+    const convertHundreds = (num) => {
+      let result = "";
+      if (num >= 100) {
+        result += ones[Math.floor(num / 100)] + " hundred ";
+        num %= 100;
+      }
+      if (num >= 20) {
+        result += tens[Math.floor(num / 10)] + " ";
+        num %= 10;
+      } else if (num >= 10) {
+        result += teens[num - 10] + " ";
+        return result;
+      }
+      if (num > 0) {
+        result += ones[num] + " ";
+      }
+      return result;
+    };
+
+    if (amount === 0) return "zero rupees only";
+
+    let amountStr = Math.floor(amount).toString();
+    let words = "";
+
+    // Handle crores (10,000,000)
+    if (amountStr.length > 7) {
+      const crores = parseInt(amountStr.slice(0, -7));
+      words += convertHundreds(crores) + "crore ";
+      amountStr = amountStr.slice(-7);
+    }
+
+    // Handle lakhs (100,000)
+    if (amountStr.length > 5) {
+      const lakhs = parseInt(amountStr.slice(0, -5));
+      words += convertHundreds(lakhs) + "lakh ";
+      amountStr = amountStr.slice(-5);
+    }
+
+    // Handle thousands (1,000)
+    if (amountStr.length > 3) {
+      const thousands = parseInt(amountStr.slice(0, -3));
+      words += convertHundreds(thousands) + "thousand ";
+      amountStr = amountStr.slice(-3);
+    }
+
+    // Handle hundreds
+    if (parseInt(amountStr) > 0) {
+      words += convertHundreds(parseInt(amountStr));
+    }
+
+    return words.trim() + " rupees only";
+  };
+
+  const fetchCourierCharges = async () => {
+    try {
+      const response = await fetch(`${backendUrl}/api/user/courier-charges`, {
+        headers: {
+          utoken: userToken,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setCourierCharges(data.courierCharges);
+      } else {
+        console.error("Failed to fetch courier charges");
+      }
+    } catch (error) {
+      console.error("Error fetching courier charges:", error);
+    }
+  };
 
   // Fetch user profile and categories on component mount
   useEffect(() => {
     if (isOpen && userToken) {
       fetchUserProfile();
       fetchCategories();
+      fetchCourierCharges();
     }
   }, [isOpen, userToken]);
 
@@ -73,13 +188,24 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
   useEffect(() => {
     if (userProfile && userProfile.khandanid) {
       fetchKhandanDetails(userProfile.khandanid);
+
+      // Prefill courier address if user is not in Manpur area
+      if (!isUserInManpurArea()) {
+        const prefillAddress = getPrefillAddress();
+        if (prefillAddress) {
+          setFormData((prev) => ({
+            ...prev,
+            courierAddress: prefillAddress,
+          }));
+        }
+      }
     }
   }, [userProfile]);
 
   // Recalculate totals when donation items or willCome changes
   useEffect(() => {
     calculateTotals();
-  }, [formData.donationItems, formData.willCome]);
+  }, [formData.donationItems, formData.willCome, courierCharges, userProfile]); // Add courierCharges and userProfile
 
   const capitalizeEachWord = (str) => {
     if (!str) return ""; // Handle empty or null strings
@@ -87,6 +213,115 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
       .split(" ")
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(" ");
+  };
+
+  const isUserInManpurArea = () => {
+    if (!userProfile?.address?.currlocation) return false;
+
+    const location = userProfile.address.currlocation.toLowerCase();
+    console.log(location);
+    console.log(location.includes("gaya") && location.includes("manpur"));
+    return (
+      location.includes("manpur") ||
+      (location.includes("gaya") && location.includes("manpur"))
+    );
+  };
+  const getPrefillAddress = () => {
+    if (!userProfile?.address) return "";
+
+    const address = userProfile.address;
+    const addressParts = [];
+
+    // Add address fields in order, excluding currlocation
+    if (address.houseno) addressParts.push(address.houseno);
+    if (address.locality) addressParts.push(address.locality);
+    if (address.landmark) addressParts.push(address.landmark);
+    if (address.city) addressParts.push(address.city);
+    if (address.state) addressParts.push(address.state);
+    if (address.pincode) addressParts.push(address.pincode);
+
+    return addressParts.join(", ");
+  };
+
+  const getCourierChargeForUser = () => {
+    if (!userProfile?.address?.currlocation || courierCharges.length === 0) {
+      return 600; // Default fallback
+    }
+
+    const location = userProfile.address.currlocation.toLowerCase();
+
+    // Check if user is in Manpur (no courier charge)
+    if (location.includes("manpur")) {
+      return 0;
+    }
+
+    // Check if user is in Gaya but outside Manpur
+    if (location.includes("gaya") && location.includes("manpur")) {
+      const gayaCharge = courierCharges.find(
+        (charge) => charge.region === "in_gaya_outside_manpur"
+      );
+      return gayaCharge ? gayaCharge.amount : 600;
+    }
+
+    // Check if user is in Bihar but outside Gaya
+    if (location.includes("bihar") && location.includes("gaya")) {
+      const biharCharge = courierCharges.find(
+        (charge) => charge.region === "in_bihar_outside_gaya"
+      );
+      return biharCharge ? biharCharge.amount : 600;
+    }
+
+    // Check for other Indian states
+    const indianStates = [
+      "andhra pradesh",
+      "arunachal pradesh",
+      "assam",
+      "chhattisgarh",
+      "goa",
+      "gujarat",
+      "haryana",
+      "himachal pradesh",
+      "jharkhand",
+      "karnataka",
+      "kerala",
+      "madhya pradesh",
+      "maharashtra",
+      "manipur",
+      "meghalaya",
+      "mizoram",
+      "nagaland",
+      "odisha",
+      "punjab",
+      "rajasthan",
+      "sikkim",
+      "tamil nadu",
+      "telangana",
+      "tripura",
+      "uttar pradesh",
+      "uttarakhand",
+      "west bengal",
+      "delhi",
+      "jammu and kashmir",
+      "ladakh",
+    ];
+
+    const isInIndia =
+      indianStates.some((state) => location.includes(state)) ||
+      location.includes("india") ||
+      location.includes("indian");
+
+    if (isInIndia) {
+      const indiaCharge = courierCharges.find(
+        (charge) => charge.region === "in_india_outside_bihar"
+      );
+      return indiaCharge ? indiaCharge.amount : 600;
+    }
+
+    // Outside India
+    const outsideIndiaCharge = courierCharges.find(
+      (charge) => charge.region === "outside_india"
+    );
+    return outsideIndiaCharge ? outsideIndiaCharge.amount : 600;
   };
 
   const fetchUserProfile = async () => {
@@ -166,7 +401,8 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
       return sum + (parseFloat(item.rate) || 0);
     }, 0);
 
-    const courierCharge = formData.willCome === "NO" ? 600 : 0;
+    const courierCharge =
+      formData.willCome === "NO" ? getCourierChargeForUser() : 0;
     const netPayable = totalAmount + courierCharge;
 
     setTotals({
@@ -197,7 +433,9 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
         item.unitAmount = selectedCategory.rate || 0;
         item.isPacketBased = selectedCategory.packet || false;
 
-        // Set unit values based on category type
+        // Reset quantity to 1 when category changes
+        item.quantity = 1; // Set unit values based on category type
+
         if (item.isPacketBased) {
           // For packet-based items: weight is 0, packet count is always 1 per item
           item.unitWeight = 0;
@@ -206,9 +444,8 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
           // For weight-based items: packet is 0, weight from category
           item.unitWeight = selectedCategory.weight || 0;
           item.unitPacket = 0;
-        }
+        } // Calculate totals based on quantity
 
-        // Calculate totals based on quantity
         const quantity = parseInt(item.quantity) || 1;
 
         if (item.isPacketBased) {
@@ -554,7 +791,13 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
                 />
                 <span className="text-sm font-medium text-gray-700">YES</span>
               </label>
-              <label className="flex items-center gap-2 cursor-pointer">
+              <label
+                className={`flex items-center gap-2 ${
+                  isUserInManpurArea()
+                    ? "cursor-not-allowed opacity-50"
+                    : "cursor-pointer"
+                }`}
+              >
                 <input
                   type="radio"
                   name="willCome"
@@ -564,11 +807,25 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
                     handleInputChange("willCome", e.target.value)
                   }
                   className="text-red-500 focus:ring-red-500"
-                  disabled={submitting}
+                  disabled={submitting || isUserInManpurArea()}
                 />
-                <span className="text-sm font-medium text-gray-700">NO</span>
+                <span className="text-sm font-medium text-gray-700">
+                  NO
+                  {isUserInManpurArea() && (
+                    <span className="text-xs text-gray-500 ml-1">
+                      (Not available for your location)
+                    </span>
+                  )}
+                </span>
               </label>
             </div>
+
+            {isUserInManpurArea() && (
+              <p className="text-xs text-blue-600 bg-blue-50 p-2 rounded">
+                Since you are in the Manpur/Gaya area, you can collect your
+                Mahaprasad directly from Durga Sthan.
+              </p>
+            )}
           </div>
 
           {/* Courier Address */}
@@ -590,7 +847,91 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
               />
             </div>
           )}
+          {/* Previous Donations */}
+          {previousDonations.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 mb-3">
+                <Clock className="text-blue-500" size={18} />
+                <h3 className="text-lg font-semibold text-gray-800">
+                  Your Recent Donations
+                </h3>
+              </div>
 
+              <div className="space-y-3">
+                {previousDonations.map((donation, index) => (
+                  <div
+                    key={donation._id}
+                    className="bg-blue-50 border border-blue-200 p-4 rounded-lg"
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-blue-800">
+                          {index === 0 ? "Latest" : "Previous"} Donation
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {new Date(donation.date).toLocaleDateString("en-IN", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          })}
+                        </span>
+                      </div>
+                      <span className="text-lg font-bold text-blue-900">
+                        ₹{donation.amount.toLocaleString()}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                      {donation.list.map((item, itemIndex) => (
+                        <div
+                          key={itemIndex}
+                          className="bg-white p-2 rounded border"
+                        >
+                          <div className="flex justify-between items-center">
+                            <div>
+                              <p className="text-sm font-medium text-gray-800 truncate">
+                                {item.category}
+                              </p>
+                              <p className="text-xs text-gray-600">
+                                Qty: {item.quantity || item.number}
+                                {item.isPacket > 0 && (
+                                  <span className="ml-1 text-xs bg-orange-100 text-orange-800 px-1 rounded">
+                                    Packets
+                                  </span>
+                                )}
+                              </p>
+                            </div>
+                            <span className="text-sm font-semibold text-gray-900">
+                              ₹{item.amount}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-2 pt-2 border-t border-blue-200 flex justify-between text-xs text-gray-600">
+                      <span>Method: {donation.method}</span>
+                      {donation.courierCharge > 0 && (
+                        <span>Courier: ₹{donation.courierCharge}</span>
+                      )}
+                      <span className="font-medium">
+                        Total: ₹
+                        {(
+                          donation.amount + (donation.courierCharge || 0)
+                        ).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="text-center">
+                <div className="inline-block h-px w-16 bg-gray-300"></div>
+                <span className="px-3 text-xs text-gray-500">New Donation</span>
+                <div className="inline-block h-px w-16 bg-gray-300"></div>
+              </div>
+            </div>
+          )}
           {/* Donation Details */}
           <div className="space-y-4">
             <div className="flex items-center gap-2 mb-4">
@@ -803,6 +1144,14 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
                   <span className="text-red-600 text-lg">
                     ₹{totals.netPayable.toFixed(2)}
                   </span>
+                </div>
+                <div className="mt-3 pt-2 border-t border-red-200">
+                  <p className="text-xs text-gray-600 font-medium mb-1">
+                    Amount in Words:
+                  </p>
+                  <p className="text-sm text-gray-800 font-medium capitalize leading-relaxed">
+                    {convertAmountToWords(totals.netPayable)}
+                  </p>
                 </div>
               </div>
             </div>

@@ -8,6 +8,7 @@ import advertisementModel from "../models/AdvertisementModel.js";
 import noticeModel from "../models/NoticeModel.js";
 import donationModel from "../models/DonationModel.js";
 import donationCategoryModel from "../models/DonationCategoryModel.js";
+import courierChargeModel from "../models/CourierChargesModel.js";
 
 //API for admin login..
 const loginAdmin = async (req, res) => {
@@ -729,6 +730,212 @@ const getAvailableYears = async (req, res) => {
   }
 };
 
+// ========== COURIER CHARGE CONTROLLERS ==========
+
+// Get all courier charges
+const getCourierCharges = async (req, res) => {
+  try {
+    const courierCharges = await courierChargeModel
+      .find()
+      .sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      message: "Courier charges fetched successfully",
+      courierCharges,
+    });
+  } catch (error) {
+    console.error("Error fetching courier charges:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching courier charges",
+      error: error.message,
+    });
+  }
+};
+
+// Create new courier charge
+const createCourierCharge = async (req, res) => {
+  try {
+    const { region, amount } = req.body;
+
+    // Validation
+    if (!region || !amount) {
+      return res.status(400).json({
+        success: false,
+        message: "Region and amount are required",
+      });
+    }
+
+    if (amount < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Amount must be a positive number",
+      });
+    }
+
+    // Valid regions
+    const validRegions = [
+      "in_gaya_outside_manpur",
+      "in_bihar_outside_gaya",
+      "in_india_outside_bihar",
+      "outside_india",
+    ];
+
+    if (!validRegions.includes(region)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid region selected",
+      });
+    }
+
+    // Check if courier charge for this region already exists
+    const existingCharge = await courierChargeModel.findOne({ region });
+    if (existingCharge) {
+      return res.status(400).json({
+        success: false,
+        message: "Courier charge for this region already exists",
+      });
+    }
+
+    // Create new courier charge
+    const newCourierCharge = new courierChargeModel({
+      region,
+      amount: Number(amount),
+    });
+
+    await newCourierCharge.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Courier charge created successfully",
+      courierCharge: newCourierCharge,
+    });
+  } catch (error) {
+    console.error("Error creating courier charge:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error creating courier charge",
+      error: error.message,
+    });
+  }
+};
+
+// Update courier charge
+const updateCourierCharge = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { region, amount } = req.body;
+
+    // Validation
+    if (!region || !amount) {
+      return res.status(400).json({
+        success: false,
+        message: "Region and amount are required",
+      });
+    }
+
+    if (amount < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Amount must be a positive number",
+      });
+    }
+
+    // Valid regions
+    const validRegions = [
+      "in_gaya_outside_manpur",
+      "in_bihar_outside_gaya",
+      "in_india_outside_bihar",
+      "outside_india",
+    ];
+
+    if (!validRegions.includes(region)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid region selected",
+      });
+    }
+
+    // Check if courier charge exists
+    const courierCharge = await courierChargeModel.findById(id);
+    if (!courierCharge) {
+      return res.status(404).json({
+        success: false,
+        message: "Courier charge not found",
+      });
+    }
+
+    // Check if courier charge for this region already exists (excluding current one)
+    const existingCharge = await courierChargeModel.findOne({
+      region,
+      _id: { $ne: id },
+    });
+
+    if (existingCharge) {
+      return res.status(400).json({
+        success: false,
+        message: "Courier charge for this region already exists",
+      });
+    }
+
+    // Update courier charge
+    const updatedCourierCharge = await courierChargeModel.findByIdAndUpdate(
+      id,
+      {
+        region,
+        amount: Number(amount),
+        updatedAt: new Date(),
+      },
+      { new: true }
+    );
+
+    res.json({
+      success: true,
+      message: "Courier charge updated successfully",
+      courierCharge: updatedCourierCharge,
+    });
+  } catch (error) {
+    console.error("Error updating courier charge:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error updating courier charge",
+      error: error.message,
+    });
+  }
+};
+
+// Delete courier charge
+const deleteCourierCharge = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if courier charge exists
+    const courierCharge = await courierChargeModel.findById(id);
+    if (!courierCharge) {
+      return res.status(404).json({
+        success: false,
+        message: "Courier charge not found",
+      });
+    }
+
+    // Delete courier charge
+    await courierChargeModel.findByIdAndDelete(id);
+
+    res.json({
+      success: true,
+      message: "Courier charge deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error deleting courier charge:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error deleting courier charge",
+      error: error.message,
+    });
+  }
+};
+
 export {
   loginAdmin,
   getFamilyList,
@@ -750,4 +957,9 @@ export {
   deleteCategory,
   getCategory,
   getAvailableYears,
+  // Courier charge controllers
+  getCourierCharges,
+  createCourierCharge,
+  updateCourierCharge,
+  deleteCourierCharge,
 };
