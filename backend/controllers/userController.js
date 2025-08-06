@@ -2332,16 +2332,19 @@ const sendOtpEmail = async (email, otp, fullname) => {
 // API for Forgot Password (Request OTP)
 const forgotPassword = async (req, res) => {
   try {
-    const { email } = req.body;
+    // const { email } = req.body;    // code edited by vijay
+    const { username } = req.body;    // code edited by vijay
 
-    if (!email || !validator.isEmail(email)) {
-      return res.json({
-        success: false,
-        message: "Please enter a valid email address.",
-      });
-    }
+    //    code commented by vijay 
+    // if (!email || !validator.isEmail(email)) {
+    //   return res.json({
+    //     success: false,
+    //     message: "Please enter a valid email address.",
+    //   });
+    // }
 
-    const user = await userModel.findOne({ "contact.email": email });
+    // const user = await userModel.findOne({ "contact.email": email });   // code edited by vijay
+    const user = await userModel.findOne({ "username":username});  // code edited by vijay
 
     if (!user) {
       return res.json({
@@ -2360,7 +2363,7 @@ const forgotPassword = async (req, res) => {
     await user.save();
 
     // Send OTP to user's email
-    const emailSent = await sendOtpEmail(email, otp, user.fullname);
+    const emailSent = await sendOtpEmail(user.contact.email, otp, user.fullname); // code edited by vijay
 
     if (emailSent) {
       res.json({
