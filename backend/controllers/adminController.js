@@ -1,4 +1,5 @@
 import express from "express";
+import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import khandanModel from "../models/KhandanModel.js";
 import userModel from "../models/UserModel.js";
@@ -10,22 +11,167 @@ import donationModel from "../models/DonationModel.js";
 import donationCategoryModel from "../models/DonationCategoryModel.js";
 import courierChargeModel from "../models/CourierChargesModel.js";
 
-//API for admin login..
+import adminModel from "../models/AdminModel.js";
+import featureModel from "../models/FeatureModel.js"; // Make sure to import your feature model
+import guestDonationModel from "../models/GuestDonationModel.js";
+
+// Login Admin
 const loginAdmin = async (req, res) => {
+  const { email, password } = req.body;
+
   try {
-    const { email, password } = req.body;
+    // 1. Check for Super Admin (from environment variables)
     if (
       email === process.env.ADMIN_EMAIL &&
       password === process.env.ADMIN_PASSWORD
     ) {
-      const token = jwt.sign(email + password, process.env.JWT_SECRET);
-      res.json({ success: true, token });
-    } else {
-      res.json({ success: false, message: "Invalid Credentials" });
+      const tokenPayload = {
+        id: "superadmin",
+        role: "superadmin",
+      };
+      const token = jwt.sign(tokenPayload, process.env.JWT_SECRET);
+      return res.json({ success: true, token });
     }
+
+    // 2. Check for regular admin in the database
+    const admin = await adminModel.findOne({ email });
+
+    if (!admin) {
+      return res.json({ success: false, message: "Invalid Credentials" });
+    }
+
+    const isMatch = await bcrypt.compare(password, admin.password);
+
+    if (!isMatch) {
+      return res.json({ success: false, message: "Invalid Credentials" });
+    }
+
+    // Create token for regular admin
+    console.log(admin);
+    const tokenPayload = {
+      id: admin._id,
+      name: admin.name,
+      role: admin.role,
+      allowedFeatures: admin.allowedFeatures, // Include permissions in the token
+    };
+    const token = jwt.sign(tokenPayload, process.env.JWT_SECRET);
+    res.json({ success: true, token });
   } catch (error) {
     console.log(error);
-    res.json({ success: false, message: error.message });
+    res.json({ success: false, message: "Server Error" });
+  }
+};
+
+// Add Admin (Super Admin only)
+const addAdmin = async (req, res) => {
+  const { name, email, password, allowedFeatures } = req.body;
+  console.log(req.body);
+  try {
+    const exists = await adminModel.findOne({ email });
+    if (exists) {
+      return res.json({
+        success: false,
+        message: "Admin with this email already exists",
+      });
+    }
+
+    // Hash password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const newAdmin = new adminModel({
+      name,
+      email,
+      password: hashedPassword,
+      allowedFeatures,
+    });
+
+    const admin = await newAdmin.save();
+    res.json({
+      success: true,
+      message: "Admin added successfully",
+      data: admin,
+    });
+  } catch (error) {
+    console.log(error);
+    res.json({ success: false, message: "Error adding admin" });
+  }
+};
+
+// List all Admins (Super Admin only)
+const listAdmins = async (req, res) => {
+  try {
+    // Fetch admins and populate the names of the allowed features
+    const admins = await adminModel
+      .find({})
+      .select("-password")
+      .populate("allowedFeatures", "featureName");
+    res.json({ success: true, data: admins });
+  } catch (error) {
+    console.log(error);
+    res.json({ success: false, message: "Error fetching admins" });
+  }
+};
+// Edit Admin (Super Admin only)
+const editAdmin = async (req, res) => {
+  const { id, name, email, password, allowedFeatures } = req.body;
+
+  try {
+    // Find the admin to edit
+    const admin = await adminModel.findById(id);
+    if (!admin) {
+      return res.json({ success: false, message: "Admin not found" });
+    }
+
+    // Check if email is being changed and if it's already taken by another admin
+    if (email !== admin.email) {
+      const emailExists = await adminModel.findOne({ email, _id: { $ne: id } });
+      if (emailExists) {
+        return res.json({
+          success: false,
+          message: "Email already exists for another admin",
+        });
+      }
+    }
+
+    // Prepare update object
+    const updateData = {
+      name,
+      email,
+      allowedFeatures,
+    };
+
+    // Only update password if provided
+    if (password && password.trim() !== "") {
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
+      updateData.password = hashedPassword;
+    }
+
+    // Update the admin
+    const updatedAdmin = await adminModel
+      .findByIdAndUpdate(id, updateData, { new: true })
+      .populate("allowedFeatures", "featureName");
+
+    res.json({
+      success: true,
+      message: "Admin updated successfully",
+      data: updatedAdmin,
+    });
+  } catch (error) {
+    console.log(error);
+    res.json({ success: false, message: "Error updating admin" });
+  }
+};
+
+// Remove Admin (Super Admin only)
+const removeAdmin = async (req, res) => {
+  try {
+    await adminModel.findByIdAndDelete(req.body.id);
+    res.json({ success: true, message: "Admin removed successfully" });
+  } catch (error) {
+    console.log(error);
+    res.json({ success: false, message: "Error removing admin" });
   }
 };
 
@@ -141,8 +287,8 @@ const getAdvertisementList = async (req, res) => {
 const getDonationList = async (req, res) => {
   try {
     const donations = await donationModel
-      .find()
-      .populate("userId", "fullname email")
+      .find({ paymentStatus: "completed" })
+      .populate("userId", "fullname email contact address")
       .sort({ createdAt: -1 });
 
     res.json({
@@ -151,6 +297,31 @@ const getDonationList = async (req, res) => {
     });
   } catch (error) {
     console.log("Error in getDonationList:", error);
+    res.json({ success: false, message: error.message });
+  }
+};
+
+const getGuestDonationList = async (req, res) => {
+  try {
+    const guestDonations = await guestDonationModel
+      .find({ paymentStatus: "completed" }) // Filter for completed donations
+      .populate("guestId", "fullname contact address") // Populate guest user fields
+      .sort({ createdAt: -1 });
+
+    // Format data for frontend consistency by renaming guestId to userId
+    const formattedDonations = guestDonations.map((d) => {
+      const doc = d.toObject();
+      doc.userId = doc.guestId; // Create a 'userId' property
+      delete doc.guestId; // Remove the original 'guestId'
+      return doc;
+    });
+
+    res.json({
+      success: true,
+      donations: formattedDonations, // Send with the same key 'donations'
+    });
+  } catch (error) {
+    console.log("Error in getGuestDonationList:", error);
     res.json({ success: false, message: error.message });
   }
 };
@@ -936,14 +1107,235 @@ const deleteCourierCharge = async (req, res) => {
   }
 };
 
+// Add a new feature
+const addFeature = async (req, res) => {
+  const { featureName, link, iconName } = req.body;
+  if (!featureName || !link || !iconName) {
+    return res.json({ success: false, message: "All fields are required" });
+  }
+
+  const feature = new featureModel({
+    featureName,
+    link,
+    iconName,
+  });
+
+  try {
+    await feature.save();
+    res.json({ success: true, message: "Feature Added Successfully" });
+  } catch (error) {
+    console.log(error);
+    res.json({ success: false, message: "Error adding feature" });
+  }
+};
+
+// Get all features
+const listFeatures = async (req, res) => {
+  try {
+    const features = await featureModel.find({});
+    res.json({ success: true, data: features });
+  } catch (error) {
+    console.log(error);
+    res.json({ success: false, message: "Error fetching features" });
+  }
+};
+
+// Update an existing feature (including toggling active status)
+const updateFeature = async (req, res) => {
+  try {
+    await featureModel.findByIdAndUpdate(req.params.id, req.body);
+    res.json({ success: true, message: "Feature Updated Successfully" });
+  } catch (error) {
+    console.log(error);
+    res.json({ success: false, message: "Error updating feature" });
+  }
+};
+
+// Remove a feature
+const removeFeature = async (req, res) => {
+  try {
+    await featureModel.findByIdAndDelete(req.body.id);
+    res.json({ success: true, message: "Feature Removed Successfully" });
+  } catch (error) {
+    console.log(error);
+    res.json({ success: false, message: "Error removing feature" });
+  }
+};
+const getDonationCount = async (req, res) => {
+  try {
+    const { year } = req.query; // Get year from query params
+    const currentYear = new Date().getFullYear();
+    const targetYear = year ? parseInt(year) : currentYear;
+
+    // Create start and end dates for the year
+    const startDate = new Date(targetYear, 0, 1); // January 1st
+    const endDate = new Date(targetYear + 1, 0, 1); // January 1st of next year
+
+    // Get monthly donation amounts for 'completed' payments in the specified year
+    const monthlyDonations = await donationModel.aggregate([
+      {
+        $match: {
+          createdAt: {
+            $gte: startDate,
+            $lt: endDate,
+          },
+          paymentStatus: "completed", // <-- This is the crucial filter
+        },
+      },
+      {
+        $group: {
+          _id: { month: { $month: "$createdAt" } },
+          totalAmount: { $sum: "$amount" }, // Sum the donation amounts
+        },
+      },
+      {
+        $sort: { "_id.month": 1 },
+      },
+    ]);
+
+    // Create an array with all 12 months, filling missing months with 0
+    const monthNames = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
+
+    const monthlyData = monthNames.map((month, index) => {
+      const monthData = monthlyDonations.find(
+        (item) => item._id.month === index + 1
+      );
+      return {
+        month,
+        donations: monthData ? monthData.totalAmount : 0,
+      };
+    });
+
+    // Calculate the total amount for the entire year
+    const totalAmount = monthlyData.reduce(
+      (sum, month) => sum + month.donations,
+      0
+    );
+
+    res.json({
+      success: true,
+      year: targetYear,
+      totalAmount,
+      monthlyData,
+      message: `Total completed donations for ${targetYear}: ${totalAmount}`,
+    });
+  } catch (error) {
+    console.log("Error in getDonationCount:", error);
+    res.json({ success: false, message: error.message });
+  }
+};
+
+// API to get courier addresses as JSON data
+const getOnlineCourierAddresses = async (req, res) => {
+  try {
+    const { year, location = "all" } = req.query;
+
+    // 1. Determine the year and create date range
+    const targetYear = year ? parseInt(year) : new Date().getFullYear();
+    const startDate = new Date(targetYear, 0, 1);
+    const endDate = new Date(targetYear + 1, 0, 1);
+
+    // 2. Build the base query for donations
+    const baseQuery = {
+      method: "Online",
+      courierCharge: { $gt: 0 },
+      paymentStatus: "completed",
+      createdAt: { $gte: startDate, $lt: endDate },
+    };
+
+    // 3. Fetch donations and populate user details
+    const donations = await donationModel
+      .find(baseQuery)
+      .populate({ path: "userId", select: "fullname address contact" })
+      .lean();
+
+    // 4. Filter by location (In India / Outside India)
+    const filteredDonations = donations.filter((donation) => {
+      if (!donation.userId || !donation.userId.address) {
+        return false;
+      }
+      const country = (donation.userId.address.country || "").toLowerCase();
+
+      if (location === "in_india") {
+        return country === "india";
+      }
+      if (location === "outside_india") {
+        return country !== "india";
+      }
+      return true; // for location === 'all'
+    });
+
+    // 5. Sort the filtered data
+    const sortedDonations = filteredDonations.sort((a, b) => {
+      const addrA = a.userId.address;
+      const addrB = b.userId.address;
+
+      const countryCompare = (addrA.country || "").localeCompare(
+        addrB.country || ""
+      );
+      if (countryCompare !== 0) return countryCompare;
+
+      const stateCompare = (addrA.state || "").localeCompare(addrB.state || "");
+      if (stateCompare !== 0) return stateCompare;
+
+      const cityCompare = (addrA.city || "").localeCompare(addrB.city || "");
+      return cityCompare;
+    });
+
+    // 6. Format the addresses for the response
+    const senderAddress =
+      "Shree Durga Sthan, Patwatoli, Manpur, P.O. Buniyadganj, Gaya ji, Bihar, India - 823003";
+    const formattedAddresses = sortedDonations.map((d) => ({
+      id: d._id,
+      fromAddress: senderAddress,
+      toName: d.userId.fullname,
+      toAddress: d.postalAddress,
+      toPhone: d.userId.contact?.mobileno
+        ? `${d.userId.contact.mobileno.code} ${d.userId.contact.mobileno.number}`
+        : "N/A",
+      donationDate: d.createdAt,
+    }));
+
+    // 7. Send the response
+    res.json({
+      success: true,
+      addresses: formattedAddresses,
+      count: formattedAddresses.length,
+    });
+  } catch (error) {
+    console.error("Error fetching courier addresses:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while fetching addresses.",
+    });
+  }
+};
+
 export {
   loginAdmin,
+  addAdmin,
+  listAdmins,
+  removeAdmin,
   getFamilyList,
   getUserList,
   getStaffRequirementList,
   getJobOpeningList,
   getAdvertisementList,
   getDonationList,
+  getGuestDonationList,
   getFamilyCount,
   getUserCount,
   updateUserStatus,
@@ -962,4 +1354,12 @@ export {
   createCourierCharge,
   updateCourierCharge,
   deleteCourierCharge,
+  //Features controllers
+  addFeature,
+  listFeatures,
+  updateFeature,
+  removeFeature,
+  editAdmin,
+  getDonationCount,
+  getOnlineCourierAddresses,
 };

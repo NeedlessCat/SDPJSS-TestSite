@@ -166,6 +166,7 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
 
       if (response.ok) {
         const data = await response.json();
+        console.log(data);
         setCourierCharges(data.courierCharges);
       } else {
         console.error("Failed to fetch courier charges");
@@ -189,15 +190,12 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
     if (userProfile && userProfile.khandanid) {
       fetchKhandanDetails(userProfile.khandanid);
 
-      // Prefill courier address if user is not in Manpur area
-      if (!isUserInManpurArea()) {
-        const prefillAddress = getPrefillAddress();
-        if (prefillAddress) {
-          setFormData((prev) => ({
-            ...prev,
-            courierAddress: prefillAddress,
-          }));
-        }
+      const prefillAddress = getPrefillAddress();
+      if (prefillAddress) {
+        setFormData((prev) => ({
+          ...prev,
+          courierAddress: prefillAddress,
+        }));
       }
     }
   }, [userProfile]);
@@ -205,7 +203,13 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
   // Recalculate totals when donation items or willCome changes
   useEffect(() => {
     calculateTotals();
-  }, [formData.donationItems, formData.willCome, courierCharges, userProfile]); // Add courierCharges and userProfile
+  }, [
+    formData.donationItems,
+    formData.willCome,
+    courierCharges,
+    userProfile,
+    formData.courierAddress,
+  ]); // Add courierCharges and userProfile
 
   const capitalizeEachWord = (str) => {
     if (!str) return ""; // Handle empty or null strings
@@ -231,27 +235,34 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
 
     const address = userProfile.address;
     const addressParts = [];
-
+    console.log(address);
     // Add address fields in order, excluding currlocation
-    if (address.houseno) addressParts.push(address.houseno);
-    if (address.locality) addressParts.push(address.locality);
+    if (address.room) addressParts.push("Room: " + address.room);
+    if (address.floor) addressParts.push("Floor: " + address.floor);
+    if (address.apartment) addressParts.push(address.apartment);
+    if (address.street) addressParts.push(address.street);
     if (address.landmark) addressParts.push(address.landmark);
+    if (address.postoffice) addressParts.push("PO: " + address.postoffice);
     if (address.city) addressParts.push(address.city);
+    if (address.district && address.district !== address.city)
+      addressParts.push(address.district);
     if (address.state) addressParts.push(address.state);
-    if (address.pincode) addressParts.push(address.pincode);
+    if (address.country) addressParts.push(address.country);
+    if (address.pin) addressParts.push(address.pin);
 
     return addressParts.join(", ");
   };
 
   const getCourierChargeForUser = () => {
-    if (!userProfile?.address?.currlocation || courierCharges.length === 0) {
-      return 600; // Default fallback
+    if (!formData.courierAddress || courierCharges.length === 0) {
+      console.log("Default Fallback, returning 600");
+      return 600; // Default fallback if address is empty
     }
-
-    const location = userProfile.address.currlocation.toLowerCase();
-
+    const location = formData.courierAddress.toLowerCase();
+    console.log("Fetched Location: ", location);
     // Check if user is in Manpur (no courier charge)
     if (location.includes("manpur")) {
+      console.log("Location includes manpur 0");
       return 0;
     }
 
@@ -260,6 +271,7 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
       const gayaCharge = courierCharges.find(
         (charge) => charge.region === "in_gaya_outside_manpur"
       );
+      console.log("Gaya Charge: ", gayaCharge);
       return gayaCharge ? gayaCharge.amount : 600;
     }
 
@@ -268,52 +280,17 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
       const biharCharge = courierCharges.find(
         (charge) => charge.region === "in_bihar_outside_gaya"
       );
+      console.log("Bihar Charge: ", biharCharge);
       return biharCharge ? biharCharge.amount : 600;
     }
 
-    // Check for other Indian states
-    const indianStates = [
-      "andhra pradesh",
-      "arunachal pradesh",
-      "assam",
-      "chhattisgarh",
-      "goa",
-      "gujarat",
-      "haryana",
-      "himachal pradesh",
-      "jharkhand",
-      "karnataka",
-      "kerala",
-      "madhya pradesh",
-      "maharashtra",
-      "manipur",
-      "meghalaya",
-      "mizoram",
-      "nagaland",
-      "odisha",
-      "punjab",
-      "rajasthan",
-      "sikkim",
-      "tamil nadu",
-      "telangana",
-      "tripura",
-      "uttar pradesh",
-      "uttarakhand",
-      "west bengal",
-      "delhi",
-      "jammu and kashmir",
-      "ladakh",
-    ];
-
-    const isInIndia =
-      indianStates.some((state) => location.includes(state)) ||
-      location.includes("india") ||
-      location.includes("indian");
+    const isInIndia = location.includes("india") && location.includes("bihar");
 
     if (isInIndia) {
       const indiaCharge = courierCharges.find(
         (charge) => charge.region === "in_india_outside_bihar"
       );
+      console.log("isInIndia: ", indiaCharge);
       return indiaCharge ? indiaCharge.amount : 600;
     }
 
@@ -321,6 +298,7 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
     const outsideIndiaCharge = courierCharges.find(
       (charge) => charge.region === "outside_india"
     );
+    console.log("Outside india: ", outsideIndiaCharge);
     return outsideIndiaCharge ? outsideIndiaCharge.amount : 600;
   };
 
@@ -845,6 +823,11 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
                 required={formData.willCome === "NO"}
                 disabled={submitting}
               />
+              <p className="text-xs text-blue-600 bg-blue-50 p-2 rounded-md">
+                Please confirm your address. If it is incorrect, you can update
+                it directly here. The courier charge will be calculated based on
+                this address.
+              </p>
             </div>
           )}
           {/* Previous Donations */}
@@ -1035,7 +1018,7 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
 
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Weight (Kg)
+                        Weight (g)
                       </label>
                       <input
                         type="number"
@@ -1106,7 +1089,7 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
                         0
                       )
                       .toFixed(2)}{" "}
-                    Kg
+                    g
                   </span>
                 </div>
                 <div className="flex justify-between">

@@ -59,24 +59,35 @@ const Dashboard = () => {
         }
 
         // Fetch data for selected year
-        const [familiesResponse, usersResponse] = await Promise.all([
-          axios.get(
-            backendUrl + `/api/admin/family-count?year=${selectedYear}`,
-            { headers: { aToken } }
-          ),
-          axios.get(backendUrl + `/api/admin/user-count?year=${selectedYear}`, {
-            headers: { aToken },
-          }),
-        ]);
+        const [familiesResponse, usersResponse, donationsResponse] =
+          await Promise.all([
+            axios.get(
+              backendUrl + `/api/admin/family-count?year=${selectedYear}`,
+              { headers: { aToken } }
+            ),
+            axios.get(
+              backendUrl + `/api/admin/user-count?year=${selectedYear}`,
+              {
+                headers: { aToken },
+              }
+            ),
+            axios.get(
+              backendUrl + `/api/admin/donation-count?year=${selectedYear}`,
+              { headers: { aToken } }
+            ),
+          ]);
 
         // Extract real data from API responses
         const familyData = familiesResponse.data;
         const userData = usersResponse.data;
+        const donationData = donationsResponse.data;
 
         // Calculate totals from monthly data
         const totalFamilies = familyData.totalCount || 0;
 
         const totalUsers = userData.totalUsers || 0;
+
+        const totalDonations = donationData.totalAmount || 0;
 
         // Combine monthly data from both APIs
         const monthlyData = [];
@@ -102,6 +113,10 @@ const Dashboard = () => {
           const userMonth = userData.monthlyData
             ? userData.monthlyData.find((m) => m.month === months[i])
             : null;
+          const donationMonth = donationData.monthlyData
+            ? donationData.monthlyData.find((m) => m.month === months[i])
+            : null;
+          // <-- Find donation data for the month
 
           monthlyData.push({
             month: months[i],
@@ -109,14 +124,14 @@ const Dashboard = () => {
             users: userMonth
               ? userMonth.completeUsers + userMonth.incompleteUsers
               : 0,
-            donations: Math.floor(Math.random() * 3000) + 1000, // Keep mock for now since no donations API
+            donations: donationMonth ? donationMonth.donations : 0,
           });
         }
 
         const realStats = {
           totalFamilies: totalFamilies,
           totalUsers: totalUsers,
-          totalDonations: Math.floor(Math.random() * 50000) + 10000, // Keep mock for now
+          totalDonations: totalDonations,
           monthlyData: monthlyData,
         };
         console.log(realStats);

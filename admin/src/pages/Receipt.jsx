@@ -10,11 +10,19 @@ import {
   Mail,
   CreditCard,
   DollarSign,
-  Clock, // Added for previous donations icon
+  Clock,
+  Trash2, // <-- Import Trash icon
+  Download,
+  XCircle,
+  Printer,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import axios from "axios";
 import { useContext } from "react";
 import { AdminContext } from "../context/AdminContext";
+import { toast } from "react-toastify";
+import html2pdf from "html2pdf.js";
 
 const Receipt = () => {
   const {
@@ -25,7 +33,17 @@ const Receipt = () => {
     getFamilyList,
     getDonationList,
     donationList,
+    adminName,
   } = useContext(AdminContext);
+
+  const [selectedCategoryDetails, setSelectedCategoryDetails] = useState(null);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [receiptData, setReceiptData] = useState(null);
+
+  const [donationType, setDonationType] = useState("individual");
+  const [groupDonations, setGroupDonations] = useState([]);
+  const [totalGroupAmount, setTotalGroupAmount] = useState(0);
+  const [isPayingGroup, setIsPayingGroup] = useState(false); // <-- Loading state for group payment
 
   const [selectedUser, setSelectedUser] = useState(null);
   const [userSearch, setUserSearch] = useState("");
@@ -42,11 +60,10 @@ const Receipt = () => {
   const [categories, setCategories] = useState([]);
   const [khandans, setKhandans] = useState([]);
   const [courierCharges, setCourierCharges] = useState([]);
-  const [userPreviousDonations, setUserPreviousDonations] = useState([]); // <-- New state for previous donations
+  const [userPreviousDonations, setUserPreviousDonations] = useState([]);
 
-  // Add these states for the new user form
   const [isEldest, setIsEldest] = useState(false);
-  const [usersInSelectedKhandan, setUsersInSelectedKhandan] = useState([]); // To store users of the selected khandan for father dropdown
+  const [usersInSelectedKhandan, setUsersInSelectedKhandan] = useState([]);
 
   const [remarks, setRemarks] = useState("");
   const [paymentLoading, setPaymentLoading] = useState(false);
@@ -55,13 +72,10 @@ const Receipt = () => {
     gender: "",
     dob: "",
     khandanid: "",
-    fatherid: "", // Now properly handled
+    fatherid: "",
     contact: {
       email: "",
-      mobileno: {
-        code: "+91",
-        number: "",
-      },
+      mobileno: { code: "+91", number: "" },
       whatsappno: "",
     },
     address: {
@@ -78,43 +92,360 @@ const Receipt = () => {
       floor: "",
       room: "",
     },
-    profession: {
-      category: "",
-      job: "",
-      specialization: "",
-    },
+    profession: { category: "", job: "", specialization: "" },
   });
 
+  const handleCloseModal = () => {
+    setShowReceiptModal(false);
+    setReceiptData(null);
+    resetForm(); // Now we reset the form *after* the user closes the receipt.
+  };
+
+  // Place this entire block of code inside Receipt.js, before `const Receipt = () => { ... }`
+
+  const ReceiptTemplate = ({ donationData, userData, adminName }) => {
+    if (!donationData || !userData) return null;
+
+    const finalTotalAmount = donationData.amount; // The total amount should already include courier charges from the backend.
+
+    const headerCellStyle = {
+      padding: "10px",
+      textAlign: "left",
+      borderBottom: "1px solid #eee",
+      backgroundColor: "#f2f2f2",
+      fontWeight: 600,
+    };
+    const bodyCellStyle = {
+      padding: "10px",
+      textAlign: "left",
+      borderBottom: "1px solid #eee",
+    };
+    const bodyCellRightAlign = { ...bodyCellStyle, textAlign: "right" };
+
+    return (
+      <div
+        className="bill-container"
+        style={{
+          maxWidth: "800px",
+          margin: "auto",
+          border: "1px solid #ccc",
+          padding: "25px",
+          fontFamily: "'Segoe UI', sans-serif",
+          color: "#333",
+          position: "relative",
+        }}
+      >
+        {/* You can add a watermark here if needed */}
+        <div
+          className="header"
+          style={{
+            textAlign: "center",
+            borderBottom: "2px solid #16a34a",
+            paddingBottom: "15px",
+            marginBottom: "25px",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "28px",
+              fontWeight: "bold",
+              color: "#16a34a",
+              marginBottom: "5px",
+            }}
+          >
+            SDPJSS
+          </div>
+          <div
+            style={{ fontSize: "16px", color: "#666", marginBottom: "10px" }}
+          >
+            Shree Durga Patwaye Jati Sudhar Samiti
+          </div>
+          <div>Durga Asthan, Manpur, Gaya, Bihar, India - 823003</div>
+        </div>
+
+        <div
+          style={{
+            fontSize: "22px",
+            fontWeight: 600,
+            textAlign: "center",
+            margin: "20px 0",
+          }}
+        >
+          DONATION RECEIPT
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            marginBottom: "20px",
+            fontSize: "14px",
+          }}
+        >
+          <div>
+            <strong>Receipt No:</strong> {donationData.receiptId}
+          </div>
+          <div>
+            <strong>Date:</strong>{" "}
+            {new Date(donationData.createdAt).toLocaleDateString("en-IN")}
+          </div>
+        </div>
+
+        <div
+          style={{
+            backgroundColor: "#f9f9f9",
+            padding: "15px",
+            border: "1px dashed #ddd",
+            borderRadius: "8px",
+            marginBottom: "20px",
+          }}
+        >
+          <h3
+            style={{
+              marginTop: 0,
+              color: "#16a34a",
+              borderBottom: "1px solid #eee",
+              paddingBottom: "5px",
+            }}
+          >
+            Donor Details
+          </h3>
+          <p style={{ fontSize: "14px", margin: "5px 0" }}>
+            <strong>Name:</strong> {userData.fullname}
+          </p>
+          <p style={{ fontSize: "14px", margin: "5px 0" }}>
+            <strong>Khandan:</strong> {userData.khandanName}
+          </p>
+          <p style={{ fontSize: "14px", margin: "5px 0" }}>
+            <strong>Mobile:</strong> {userData.contact.mobileno?.code}{" "}
+            {userData.contact.mobileno?.number}
+          </p>
+          <p style={{ fontSize: "14px", margin: "5px 0" }}>
+            <strong>Address:</strong>{" "}
+            {`${userData.address.street}, ${userData.address.city}, ${userData.address.state} - ${userData.address.pin}`}
+          </p>
+        </div>
+
+        <table
+          style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            marginBottom: "20px",
+          }}
+        >
+          <thead>
+            <tr>
+              <th style={headerCellStyle}>Item</th>
+              <th style={{ ...headerCellStyle, textAlign: "right" }}>
+                Quantity
+              </th>
+              <th style={{ ...headerCellStyle, textAlign: "right" }}>
+                Amount (₹)
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {donationData.list.map((item, index) => (
+              <tr key={index}>
+                <td style={bodyCellStyle}>{item.category}</td>
+                <td style={bodyCellRightAlign}>
+                  {item.number.toLocaleString("en-IN")}
+                </td>
+                <td style={bodyCellRightAlign}>
+                  ₹{item.amount.toLocaleString("en-IN")}
+                </td>
+              </tr>
+            ))}
+            {donationData.courierCharge > 0 && (
+              <tr>
+                <td
+                  colSpan={2}
+                  style={{
+                    ...bodyCellStyle,
+                    borderTop: "2px solid #ddd",
+                    fontWeight: "bold",
+                  }}
+                >
+                  Courier Charges
+                </td>
+                <td
+                  style={{
+                    ...bodyCellRightAlign,
+                    borderTop: "2px solid #ddd",
+                    fontWeight: "bold",
+                  }}
+                >
+                  ₹{donationData.courierCharge.toLocaleString("en-IN")}
+                </td>
+              </tr>
+            )}
+            <tr
+              style={{
+                fontWeight: "bold",
+                fontSize: "16px",
+                backgroundColor: "#f2f2f2",
+              }}
+            >
+              <td
+                colSpan={2}
+                style={{
+                  padding: "12px 10px",
+                  textAlign: "left",
+                  borderTop: "2px solid #ddd",
+                }}
+              >
+                TOTAL AMOUNT
+              </td>
+              <td
+                style={{
+                  ...bodyCellRightAlign,
+                  padding: "12px 10px",
+                  borderTop: "2px solid #ddd",
+                }}
+              >
+                ₹{finalTotalAmount.toLocaleString("en-IN")}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div
+          style={{
+            padding: "12px",
+            backgroundColor: "#f9f9f9",
+            borderLeft: "4px solid #16a34a",
+            marginTop: "20px",
+            fontWeight: "bold",
+          }}
+        >
+          Amount in Words: {toWords(finalTotalAmount)}
+        </div>
+
+        {/* ... (rest of the template for payment method, PAID status, footer, etc.) ... */}
+        <div
+          style={{
+            textAlign: "center",
+            marginTop: "30px",
+            paddingTop: "15px",
+            borderTop: "1px solid #ccc",
+            fontSize: "12px",
+            color: "#777",
+          }}
+        >
+          <p>
+            Thank you for your generous contribution. This is a
+            computer-generated receipt.
+          </p>
+          <p style={{ marginTop: "10px", fontStyle: "italic" }}>
+            Generated by: <strong>{adminName || "Admin"}</strong>
+          </p>
+        </div>
+      </div>
+    );
+  };
+
+  const ReceiptModal = ({ data, isGroup, onClose, adminName }) => {
+    const [currentIndex, setCurrentIndex] = useState(0);
+    const receiptRef = useRef(null);
+
+    const currentReceipt = isGroup ? data[currentIndex] : data;
+    if (!currentReceipt) return null;
+
+    const handleDownloadClick = (receiptNode, filename) => {
+      html2pdf()
+        .from(receiptNode)
+        .set({
+          margin: 0.5,
+          filename,
+          image: { type: "jpeg", quality: 0.98 },
+          html2canvas: { scale: 2 },
+          jsPDF: { unit: "in", format: "a4", orientation: "portrait" },
+        })
+        .save();
+    };
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4">
+        <div className="bg-white rounded-lg shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col">
+          <div className="p-4 border-b flex justify-between items-center">
+            <h2 className="text-xl font-bold text-gray-800">Receipt Preview</h2>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() =>
+                  handleDownloadClick(
+                    receiptRef.current,
+                    `Receipt-${currentReceipt.donationData.receiptId}.pdf`
+                  )
+                }
+                className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700"
+              >
+                <Download size={18} /> Download
+              </button>
+              <button
+                onClick={onClose}
+                className="text-gray-500 hover:text-red-600"
+              >
+                <XCircle size={24} />
+              </button>
+            </div>
+          </div>
+          <div className="p-6 overflow-y-auto relative">
+            {isGroup && (
+              <>
+                <button
+                  onClick={() => setCurrentIndex((p) => Math.max(0, p - 1))}
+                  disabled={currentIndex === 0}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/70 rounded-full p-1 shadow-md hover:bg-gray-100 disabled:opacity-30 z-10"
+                >
+                  <ChevronLeft size={24} />
+                </button>
+                <button
+                  onClick={() =>
+                    setCurrentIndex((p) => Math.min(data.length - 1, p + 1))
+                  }
+                  disabled={currentIndex === data.length - 1}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/70 rounded-full p-1 shadow-md hover:bg-gray-100 disabled:opacity-30 z-10"
+                >
+                  <ChevronRight size={24} />
+                </button>
+              </>
+            )}
+            <div ref={receiptRef}>
+              <ReceiptTemplate
+                donationData={currentReceipt.donationData}
+                userData={currentReceipt.userData}
+                adminName={adminName}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const userSearchRef = useRef(null);
-
   const paymentMethods = ["Cash", "Online"];
-
   const genderOptions = ["male", "female", "other"];
 
-  // Validation helpers (Keep them as is)
-  const validateEmail = (email) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  };
+  // --- Auto-select "Cash" for Group Donations ---
+  useEffect(() => {
+    if (donationType === "group") {
+      setPaymentMethod("Cash");
+    } else {
+      setPaymentMethod(""); // Reset for individual mode
+    }
+  }, [donationType]);
 
-  const validateMobile = (mobile) => {
-    return /^\d{10}$/.test(mobile);
-  };
-
-  // Validation message component (Keep it as is)
-  const ValidationMessage = ({ show, message }) => {
-    if (!show) return null;
-    return <p className="text-red-500 text-sm mt-1">{message}</p>;
-  };
-
-  // Validation state (Keep them as is)
+  const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const validateMobile = (mobile) => /^\d{10}$/.test(mobile);
+  const ValidationMessage = ({ show, message }) =>
+    !show ? null : <p className="text-red-500 text-sm mt-1">{message}</p>;
   const emailError =
     newUser.contact.email && !validateEmail(newUser.contact.email);
   const mobileError =
     newUser.contact.mobileno.number &&
     !validateMobile(newUser.contact.mobileno.number);
 
-  // Location options with auto-fill data (Keep them as is)
   const locationOptions = [
     {
       value: "in_manpur",
@@ -183,23 +514,20 @@ const Receipt = () => {
     },
   ];
 
-  // Helper to capitalize each word for fullname and address fields
-  const capitalizeEachWord = (str) => {
-    if (!str) return "";
-    return str
-      .split(" ")
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(" ");
-  };
+  const capitalizeEachWord = (str) =>
+    !str
+      ? ""
+      : str
+          .split(" ")
+          .map(
+            (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+          )
+          .join(" ");
 
-  // Replace the existing handleKhandanChangeForNewUser function
   const handleKhandanChangeForNewUser = (khandanId) => {
-    setNewUser((prev) => ({ ...prev, khandanid: khandanId }));
-    setNewUser((prev) => ({ ...prev, fatherid: "" })); // Reset fatherId on khandan change
-    setIsEldest(false); // Reset eldest on khandan change
-    console.log(userList);
+    setNewUser((prev) => ({ ...prev, khandanid: khandanId, fatherid: "" }));
+    setIsEldest(false);
     if (khandanId) {
-      // Filter from the complete userList (not filteredUsers) based on selected khandan and gender
       const allUsersInKhandan = userList.filter(
         (user) => user.khandanid._id === khandanId && user.gender === "male"
       );
@@ -209,7 +537,6 @@ const Receipt = () => {
     }
   };
 
-  // Helper to convert amount to words
   const convertAmountToWords = (amount) => {
     const ones = [
       "",
@@ -247,7 +574,6 @@ const Receipt = () => {
       "Eighty",
       "Ninety",
     ];
-
     const numToWords = (num) => {
       if (num === 0) return "";
       if (num < 10) return ones[num];
@@ -255,11 +581,9 @@ const Receipt = () => {
       const digit = num % 10;
       return `${tens[Math.floor(num / 10)]} ${ones[digit]}`.trim();
     };
-
     if (amount === 0) return "Zero Rupees Only";
     let words = "";
     let num = Math.floor(amount);
-
     if (num >= 10000000) {
       words += `${numToWords(Math.floor(num / 10000000))} Crore `;
       num %= 10000000;
@@ -279,27 +603,22 @@ const Receipt = () => {
     if (num > 0) {
       words += numToWords(num);
     }
-
     return `${words.trim()} Rupees Only`;
   };
 
-  // New: Handle eldest checkbox for new user
   const handleEldestChangeForNewUser = (checked) => {
     setIsEldest(checked);
-    if (checked && newUser.khandanid) {
-      setNewUser((prev) => ({ ...prev, fatherid: newUser.khandanid }));
-    } else {
-      setNewUser((prev) => ({ ...prev, fatherid: "" }));
-    }
+    setNewUser((prev) => ({
+      ...prev,
+      fatherid: checked && newUser.khandanid ? newUser.khandanid : "",
+    }));
   };
 
   const fetchCourierCharges = async () => {
     try {
       const response = await axios.get(
         backendUrl + "/api/admin/courier-charges",
-        {
-          headers: { aToken },
-        }
+        { headers: { aToken } }
       );
       if (response.data.success) {
         setCourierCharges(response.data.courierCharges || []);
@@ -308,8 +627,6 @@ const Receipt = () => {
       console.error("Error fetching courier charges:", error);
     }
   };
-
-  // Effect to load initial data
   useEffect(() => {
     const fetchData = async () => {
       if (aToken) {
@@ -332,25 +649,18 @@ const Receipt = () => {
     };
     fetchData();
   }, [aToken]);
-
-  // Load Razorpay script (Keep it as is)
-  const loadRazorpayScript = () => {
-    return new Promise((resolve) => {
+  const loadRazorpayScript = () =>
+    new Promise((resolve) => {
       const script = document.createElement("script");
       script.src = "https://checkout.razorpay.com/v1/checkout.js";
       script.onload = () => resolve(true);
       script.onerror = () => resolve(false);
       document.body.appendChild(script);
     });
-  };
-
-  // Fetch categories (Keep it as is)
   const fetchCategories = async () => {
     try {
       const response = await axios.get(backendUrl + "/api/admin/categories", {
-        headers: {
-          aToken,
-        },
+        headers: { aToken },
       });
       if (response.data.success) {
         setCategories(response.data.categories || []);
@@ -359,28 +669,21 @@ const Receipt = () => {
       console.error("Error fetching categories:", error);
     }
   };
-
   const getCourierChargeForUser = (user) => {
     if (!user?.address?.currlocation) return 0;
-
-    // Map user's current location to courier charge regions
     const locationToCourierRegionMap = {
       in_gaya_outside_manpur: "in_gaya_outside_manpur",
       in_bihar_outside_gaya: "in_bihar_outside_gaya",
       in_india_outside_bihar: "in_india_outside_bihar",
       outside_india: "outside_india",
     };
-
     const courierRegion = locationToCourierRegionMap[user.address.currlocation];
-    if (!courierRegion) return 0; // No charge for "in_manpur"
-
+    if (!courierRegion) return 0;
     const courierCharge = courierCharges.find(
       (charge) => charge.region === courierRegion
     );
     return courierCharge ? courierCharge.amount : 0;
   };
-
-  // Load donations (Keep it as is)
   const loadDonations = async () => {
     try {
       await getDonationList();
@@ -388,27 +691,16 @@ const Receipt = () => {
       console.error("Error loading donations:", error);
     }
   };
-
-  // Get khandan name by ID (Keep it as is)
   const getKhandanName = (khandanId) => {
     const khandan = khandans.find((k) => k._id === khandanId._id);
     return khandan ? khandan.name : "Unknown Khandan";
   };
-
-  // Helper function to format khandan option display for `Add New User` modal
-  const formatKhandanOption = (khandan) => {
-    let displayText = khandan.name;
-    if (khandan.address.landmark) {
-      displayText += `, ${khandan.address.landmark}`;
-    }
-    if (khandan.address.street) {
-      displayText += `, ${khandan.address.street}`;
-    }
-    displayText += ` (${khandan.khandanid})`;
-    return displayText;
-  };
-
-  // Filter users based on search (Keep it as is)
+  const formatKhandanOption = (khandan) =>
+    `${khandan.name}${
+      khandan.address.landmark ? `, ${khandan.address.landmark}` : ""
+    }${khandan.address.street ? `, ${khandan.address.street}` : ""} (${
+      khandan.khandanid
+    })`;
   useEffect(() => {
     if (userSearch.length > 0) {
       const filtered = userList.filter(
@@ -431,91 +723,76 @@ const Receipt = () => {
       setShowUserDropdown(false);
     }
   }, [userSearch, userList, khandans]);
-
-  // --- NEW ---
-  // Effect to filter previous donations when a user is selected
-  // Effect to filter previous donations when a user is selected
   useEffect(() => {
     if (selectedUser && donationList) {
       const previous = donationList
         .filter((donation) => donation.userId?._id === selectedUser._id)
-        .sort((a, b) => new Date(b.date) - new Date(a.date)) // Sort by most recent first
-        .slice(0, 2); // <-- MODIFIED: Get only the last 2 donations
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .slice(0, 2);
       setUserPreviousDonations(previous);
     } else {
       setUserPreviousDonations([]);
     }
   }, [selectedUser, donationList]);
-
-  // Get available categories (exclude already selected ones) (Keep it as is)
   const getAvailableCategories = () => {
     const selectedCategoryIds = donations.map((d) => d.categoryId);
     return categories.filter(
       (cat) => !selectedCategoryIds.includes(cat._id) && cat.isActive
     );
   };
-
-  // Handle user selection (Keep it as is)
   const handleUserSelect = (user) => {
     setSelectedUser(user);
     setUserSearch("");
     setShowUserDropdown(false);
-    // Unfocus the search input
     if (userSearchRef.current) {
       userSearchRef.current.blur();
     }
   };
-
-  // Handle add donation (Keep it as is)
   const handleAddDonation = () => {
     if (!selectedCategory || !quantity) {
       alert("Please select category and enter quantity");
       return;
     }
-
     const category = categories.find((cat) => cat._id === selectedCategory);
     if (!category) return;
-
     const amount = category.rate * parseInt(quantity);
     const weight = category.weight * parseInt(quantity);
-
     const newDonation = {
       id: Date.now(),
       categoryId: category._id,
       category: category.categoryName,
       quantity: parseInt(quantity),
-      amount: amount,
-      weight: weight,
+      amount,
+      weight,
       packet: category.packet,
     };
-
     setDonations([...donations, newDonation]);
     setSelectedCategory("");
     setQuantity("");
   };
-
-  // Remove donation (Keep it as is)
   const removeDonation = (id) => {
     setDonations(donations.filter((donation) => donation.id !== id));
   };
-
-  // --- NEW ---
-  // Check if user is in a location where courier is not an option
   const isLocalUser =
     selectedUser &&
     ["in_manpur", "in_gaya_outside_manpur"].includes(
       selectedUser.address.currlocation
     );
-
-  // --- NEW ---
-  // Effect to reset `willCome` to "YES" if a local user is selected
   useEffect(() => {
     if (isLocalUser) {
       setWillCome("YES");
     }
   }, [isLocalUser]);
 
-  // Calculate totals (Keep it as is)
+  useEffect(() => {
+    if (selectedCategory) {
+      const details = categories.find((c) => c._id === selectedCategory);
+      setSelectedCategoryDetails(details);
+    } else {
+      setSelectedCategoryDetails(null);
+    }
+  }, [selectedCategory, categories]);
+
   const totalAmount = donations.reduce(
     (sum, donation) => sum + donation.amount,
     0
@@ -533,46 +810,33 @@ const Receipt = () => {
       ? getCourierChargeForUser(selectedUser)
       : 0;
   const netPayableAmount = totalAmount + courierCharge;
-
-  // Handle nested object updates for newUser (Keep it as is)
   const updateNestedField = (path, value) => {
     const pathArray = path.split(".");
     setNewUser((prev) => {
       const newState = { ...prev };
       let current = newState;
-
       for (let i = 0; i < pathArray.length - 1; i++) {
         current[pathArray[i]] = { ...current[pathArray[i]] };
         current = current[pathArray[i]];
       }
-
       current[pathArray[pathArray.length - 1]] = value;
       return newState;
     });
   };
-
-  // Handle location change and auto-fill address (Keep it as is)
   const handleLocationChange = (locationValue) => {
     updateNestedField("address.currlocation", locationValue);
-
     const selectedLocation = locationOptions.find(
       (option) => option.value === locationValue
     );
-
     if (selectedLocation) {
-      // Auto-fill address fields based on selected location
-      Object.keys(selectedLocation.address).forEach((key) => {
-        updateNestedField(`address.${key}`, selectedLocation.address[key]);
-      });
+      Object.keys(selectedLocation.address).forEach((key) =>
+        updateNestedField(`address.${key}`, selectedLocation.address[key])
+      );
     }
   };
-
-  // Updated handleRegisterUser function (Keep as is)
   const handleRegisterUser = async () => {
     try {
       setLoading(true);
-
-      // Validate required fields
       if (
         !newUser.fullname ||
         !newUser.gender ||
@@ -581,18 +845,14 @@ const Receipt = () => {
         !newUser.address.currlocation ||
         (!isEldest && !newUser.fatherid)
       ) {
-        alert(
-          "Please fill in all required fields: fullname, gender, dob, khandan, father (or check eldest), and address"
-        );
+        alert("Please fill in all required fields...");
         return;
       }
-
       const hasEmail =
         newUser.contact.email && newUser.contact.email.trim() !== "";
       const hasMobile =
         newUser.contact.mobileno.number &&
         newUser.contact.mobileno.number.trim() !== "";
-
       if (!hasEmail && !hasMobile) {
         alert("At least one contact method (email or mobile) is required");
         return;
@@ -615,19 +875,17 @@ const Receipt = () => {
         mobile: hasMobile ? newUser.contact.mobileno : undefined,
         address: newUser.address,
       };
-
       const response = await axios.post(
         backendUrl + "/api/admin/register",
         userData,
         { headers: { aToken } }
       );
-
       if (response.data.success) {
         const { userId, username, notifications } = response.data;
         const newUserData = {
           _id: userId,
           fullname: newUser.fullname,
-          username: username,
+          username,
           gender: newUser.gender,
           dob: newUser.dob,
           khandanid: newUser.khandanid,
@@ -686,8 +944,6 @@ const Receipt = () => {
       setLoading(false);
     }
   };
-
-  // Handle Razorpay payment (Keep as is)
   const handleRazorpayPayment = async (orderData) => {
     try {
       setPaymentLoading(true);
@@ -696,15 +952,11 @@ const Receipt = () => {
         alert("Failed to load payment gateway. Please try again.");
         return false;
       }
-
       const response = await axios.post(
         backendUrl + "/api/admin/create-donation-order",
         orderData,
-        {
-          headers: { aToken, "Content-Type": "application/json" },
-        }
+        { headers: { aToken, "Content-Type": "application/json" } }
       );
-
       if (!response.data.success) {
         alert(`Error: ${response.data.message}`);
         return false;
@@ -725,15 +977,15 @@ const Receipt = () => {
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_signature: response.razorpay_signature,
-                donationId: donationId,
+                donationId,
               },
               { headers: { aToken, "Content-Type": "application/json" } }
             );
-
             if (verifyResponse.data.success) {
-              alert("Payment successful! Donation recorded.");
+              toast.success("Payment successful! Donation recorded.");
+              setReceiptData(verifyResponse.data.data); // Assumes backend returns data on verification
+              setShowReceiptModal(true);
               await getDonationList();
-              resetForm();
             } else {
               alert(
                 `Payment verification failed: ${verifyResponse.data.message}`
@@ -763,19 +1015,15 @@ const Receipt = () => {
       setPaymentLoading(false);
     }
   };
-
-  // Reset form (Keep as is)
   const resetForm = () => {
     setSelectedUser(null);
     setUserSearch("");
     setDonations([]);
     setWillCome("YES");
     setCourierAddress("");
-    setPaymentMethod("");
+    if (donationType === "individual") setPaymentMethod("");
     setRemarks("");
   };
-
-  // Handle form submission (Keep as is)
   const handleSubmit = async () => {
     if (!selectedUser) {
       alert("Please select a user");
@@ -793,18 +1041,17 @@ const Receipt = () => {
       alert("Please provide courier address");
       return;
     }
-
     try {
       setLoading(true);
       const orderData = {
         userId: selectedUser._id,
-        list: donations.map((donation) => ({
-          categoryId: donation.categoryId,
-          category: donation.category,
-          number: donation.quantity,
-          amount: donation.amount,
-          isPacket: donation.packet ? 1 : 0,
-          quantity: donation.weight,
+        list: donations.map((d) => ({
+          categoryId: d.categoryId,
+          category: d.category,
+          number: d.quantity,
+          amount: d.amount,
+          isPacket: d.packet ? 1 : 0,
+          quantity: d.weight,
         })),
         amount: netPayableAmount,
         method: paymentMethod,
@@ -815,25 +1062,22 @@ const Receipt = () => {
             ? courierAddress
             : `${selectedUser.address.street}, ${selectedUser.address.city}, ${selectedUser.address.state} - ${selectedUser.address.pin}`,
       };
-
       if (paymentMethod === "Cash") {
         const response = await axios.post(
           backendUrl + "/api/admin/create-donation-order",
           orderData,
-          {
-            headers: { aToken, "Content-Type": "application/json" },
-          }
+          { headers: { aToken, "Content-Type": "application/json" } }
         );
         if (response.data.success) {
-          alert("Cash donation recorded successfully!");
+          toast.success("Cash donation recorded successfully!");
+          setReceiptData(response.data.data); // Assumes backend returns { success: true, data: { donationData, userData } }
+          setShowReceiptModal(true);
           await getDonationList();
-          resetForm();
         } else {
           alert(`Error: ${response.data.message}`);
         }
       } else if (paymentMethod === "Online") {
-        const paymentSuccess = await handleRazorpayPayment(orderData);
-        if (!paymentSuccess) return;
+        await handleRazorpayPayment(orderData);
       }
     } catch (error) {
       console.error("Error submitting donation:", error);
@@ -843,19 +1087,257 @@ const Receipt = () => {
     }
   };
 
+  // --- UPDATED: Group Donation Functions ---
+
+  const handleAddToGroup = () => {
+    if (!selectedUser || netPayableAmount <= 0) {
+      alert("Please select a user and add donation items first.");
+      return;
+    }
+
+    const newGroupEntry = {
+      localId: Date.now(),
+      user: selectedUser,
+      donations: donations, // Keep the full donation items list
+      netPayableAmount: netPayableAmount,
+      // Store all necessary details for final submission
+      orderPayload: {
+        userId: selectedUser._id,
+        list: donations.map((d) => ({
+          categoryId: d.categoryId,
+          category: d.category,
+          number: d.quantity,
+          amount: d.amount,
+          isPacket: d.packet ? 1 : 0,
+          quantity: d.weight,
+        })),
+        amount: netPayableAmount,
+        method: "Cash", // Hardcoded for group
+        courierCharge,
+        remarks,
+        postalAddress:
+          willCome === "NO"
+            ? courierAddress
+            : `${selectedUser.address.street}, ${selectedUser.address.city}, ${selectedUser.address.state} - ${selectedUser.address.pin}`,
+      },
+    };
+
+    setGroupDonations((prev) => [...prev, newGroupEntry]);
+    setTotalGroupAmount((prev) => prev + netPayableAmount);
+    alert(
+      `${
+        selectedUser.fullname
+      }'s donation of ₹${netPayableAmount.toLocaleString(
+        "en-IN"
+      )} has been added to the group list.`
+    );
+    resetForm();
+  };
+
+  const handleDeleteFromGroup = (localId) => {
+    if (
+      window.confirm(
+        "Are you sure you want to remove this receipt from the group?"
+      )
+    ) {
+      const receiptToRemove = groupDonations.find((g) => g.localId === localId);
+      if (receiptToRemove) {
+        setTotalGroupAmount((prev) => prev - receiptToRemove.netPayableAmount);
+        setGroupDonations((prev) => prev.filter((g) => g.localId !== localId));
+      }
+    }
+  };
+
+  const handlePayGroup = async () => {
+    if (
+      groupDonations.length === 0 ||
+      !window.confirm(`Process ${groupDonations.length} cash donations?`)
+    ) {
+      return;
+    }
+
+    setIsPayingGroup(true);
+    const successfulReceipts = [];
+    const failedReceipts = [];
+
+    for (const receipt of groupDonations) {
+      try {
+        const response = await axios.post(
+          backendUrl + "/api/admin/create-donation-order",
+          receipt.orderPayload,
+          { headers: { aToken, "Content-Type": "application/json" } }
+        );
+        if (response.data.success) {
+          successfulReceipts.push(response.data.data);
+        } else {
+          failedReceipts.push({
+            name: receipt.user.fullname,
+            reason: response.data.message,
+          });
+        }
+      } catch (error) {
+        failedReceipts.push({
+          name: receipt.user.fullname,
+          reason: error.response?.data?.message || "Network Error",
+        });
+      }
+    }
+
+    toast.success(
+      `Batch complete! Success: ${successfulReceipts.length}, Failed: ${failedReceipts.length}`
+    );
+    if (failedReceipts.length > 0) {
+      const errorDetails = failedReceipts
+        .map((f) => `- ${f.name}: ${f.reason}`)
+        .join("\n");
+      toast.error(
+        <div>
+          <p>Failures:</p>
+          <pre style={{ whiteSpace: "pre-wrap" }}>{errorDetails}</pre>
+        </div>,
+        { autoClose: 10000 }
+      );
+    }
+
+    if (successfulReceipts.length > 0) {
+      setReceiptData(successfulReceipts);
+      setShowReceiptModal(true);
+    }
+
+    await getDonationList();
+    setGroupDonations([]);
+    setTotalGroupAmount(0);
+    setIsPayingGroup(false);
+  };
+
+  const handleEndGroup = () => {
+    if (
+      groupDonations.length > 0 &&
+      !window.confirm(
+        "Are you sure you want to end and reset? The current group list will be cleared without payment."
+      )
+    ) {
+      return;
+    }
+    setGroupDonations([]);
+    setTotalGroupAmount(0);
+    resetForm();
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 py-6 px-4">
-      <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-lg overflow-hidden">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-green-600 to-green-700 px-6 py-4">
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Package className="h-6 w-6" />
-            Donation Receipt Form
-          </h1>
+    <>
+      {showReceiptModal && receiptData && (
+        <ReceiptModal
+          data={receiptData}
+          isGroup={Array.isArray(receiptData)}
+          onClose={handleCloseModal}
+          adminName={adminName}
+        />
+      )}
+      <div className="p-6 md:p-8 bg-gray-100 min-h-screen">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+          <h1 className="text-3xl font-bold text-gray-800">Donation Receipt</h1>
+          <div className="flex items-center bg-gray-200 rounded-full p-1 self-start md:self-center">
+            <button
+              onClick={() => setDonationType("individual")}
+              className={`px-4 py-1.5 text-sm font-semibold rounded-full transition-colors ${
+                donationType === "individual"
+                  ? "bg-white text-green-600 shadow-md"
+                  : "text-gray-600 hover:bg-gray-300"
+              }`}
+            >
+              Individual Donation
+            </button>
+            <button
+              onClick={() => setDonationType("group")}
+              className={`px-4 py-1.5 text-sm font-semibold rounded-full transition-colors ${
+                donationType === "group"
+                  ? "bg-white text-blue-600 shadow-md"
+                  : "text-gray-600 hover:bg-gray-300"
+              }`}
+            >
+              Group Donation
+            </button>
+          </div>
         </div>
 
-        <div className="p-6 space-y-6">
-          {/* User Selection */}
+        <div className="bg-white rounded-lg shadow-lg p-6 md:p-8 space-y-8">
+          {donationType === "group" && (
+            <div className="bg-blue-50 border-l-4 border-blue-500 rounded-r-lg p-6 mb-6">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
+                <h2 className="text-2xl font-bold text-blue-800">
+                  Group Donation Summary
+                </h2>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handlePayGroup}
+                    className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 text-sm disabled:bg-green-400"
+                    disabled={isPayingGroup || groupDonations.length === 0}
+                  >
+                    {isPayingGroup ? "Processing..." : "Pay All as Cash"}
+                  </button>
+                  <button
+                    onClick={handleEndGroup}
+                    className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors flex items-center gap-2 text-sm"
+                    disabled={isPayingGroup}
+                  >
+                    End & Reset
+                  </button>
+                </div>
+              </div>
+              <div className="bg-white p-4 rounded-lg shadow">
+                <div className="flex justify-between items-center border-b pb-2 mb-2">
+                  <span className="text-lg font-semibold text-gray-700">
+                    Total Group Donation:
+                  </span>
+                  <span className="text-2xl font-bold text-blue-600">
+                    ₹{totalGroupAmount.toLocaleString("en-IN")}
+                  </span>
+                </div>
+                <div className="mt-4 max-h-60 overflow-y-auto pr-2">
+                  <h3 className="font-semibold text-gray-600 mb-2">
+                    Receipts Added ({groupDonations.length}):
+                  </h3>
+                  {groupDonations.length > 0 ? (
+                    <ul className="space-y-2">
+                      {groupDonations.map((donation, index) => (
+                        <li
+                          key={donation.localId}
+                          className="flex justify-between items-center text-sm p-2 bg-gray-50 rounded group"
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="text-gray-800">
+                              {index + 1}. {donation.user.fullname}
+                            </span>
+                            <span className="font-medium text-gray-900">
+                              ₹
+                              {donation.netPayableAmount.toLocaleString(
+                                "en-IN"
+                              )}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() =>
+                              handleDeleteFromGroup(donation.localId)
+                            }
+                            className="text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="Remove receipt"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-center text-gray-500 text-sm py-4">
+                      No receipts added to the group yet.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="bg-gray-50 rounded-lg p-4">
             <label className="block text-sm font-semibold text-gray-700 mb-2">
               Select User
@@ -875,8 +1357,6 @@ const Receipt = () => {
                   }
                 />
               </div>
-
-              {/* User Dropdown */}
               {showUserDropdown && (
                 <div className="absolute top-full left-0 right-0 bg-white border border-gray-300 rounded-lg shadow-lg z-10 max-h-60 overflow-y-auto">
                   {filteredUsers.length > 0 ? (
@@ -922,8 +1402,6 @@ const Receipt = () => {
                 </div>
               )}
             </div>
-
-            {/* Selected User Display */}
             {selectedUser && (
               <div className="mt-4 bg-white rounded-lg border border-gray-200 p-4">
                 <div className="flex items-start justify-between">
@@ -970,10 +1448,9 @@ const Receipt = () => {
             )}
           </div>
 
-          {/* Add User Form Modal (Keep As Is) */}
           {showAddUserForm && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
                 <div className="p-6">
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-xl font-semibold">Add New User</h2>
@@ -1002,7 +1479,6 @@ const Receipt = () => {
                         required
                       />
                     </div>
-
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1024,7 +1500,6 @@ const Receipt = () => {
                           ))}
                         </select>
                       </div>
-
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Date of Birth <span className="text-red-500">*</span>
@@ -1040,7 +1515,6 @@ const Receipt = () => {
                         />
                       </div>
                     </div>
-
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Khandan <span className="text-red-500">*</span>
@@ -1061,7 +1535,6 @@ const Receipt = () => {
                         ))}
                       </select>
                     </div>
-
                     <div className="w-full">
                       <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-1">
                         <label className="text-sm font-medium text-gray-700">
@@ -1091,9 +1564,10 @@ const Receipt = () => {
                         required={!isEldest}
                       >
                         <option value="">Select Father</option>
+                        {console.log(usersInSelectedKhandan)}
                         {usersInSelectedKhandan.map((user) => (
-                          <option key={user._id} value={user._id}>
-                            {user.fullname} ({user._id})
+                          <option key={user._id} value={user.id}>
+                            {user.fullname} ({user.id})
                           </option>
                         ))}
                       </select>
@@ -1104,6 +1578,364 @@ const Receipt = () => {
                             : "Select father. If not found, register father first."}
                         </p>
                       )}
+                    </div>
+
+                    <div className="pt-1">
+                      <h3 className="border-b pb-2 text-lg font-semibold text-gray-800 mb-3">
+                        Contact Information
+                      </h3>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Email
+                          </label>
+                          <input
+                            type="email"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                            value={newUser.contact.email}
+                            onChange={(e) =>
+                              updateNestedField("contact.email", e.target.value)
+                            }
+                            placeholder="Enter email address"
+                          />
+                          <ValidationMessage
+                            show={emailError}
+                            message="Please enter a valid email address"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Mobile Number
+                          </label>
+                          <div className="flex">
+                            <select
+                              className="px-3 py-2 border border-gray-300 rounded-l-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-gray-50"
+                              value={newUser.contact.mobileno.code}
+                              onChange={(e) =>
+                                updateNestedField(
+                                  "contact.mobileno.code",
+                                  e.target.value
+                                )
+                              }
+                            >
+                              <option value="+91">+91</option>
+                              <option value="+1">+1</option>
+                              <option value="+44">+44</option>
+                              {/* Add more country codes as needed */}
+                            </select>
+                            <input
+                              type="tel"
+                              className="flex-1 px-3 py-2 border border-gray-300 rounded-r-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                              value={newUser.contact.mobileno.number}
+                              onChange={(e) =>
+                                updateNestedField(
+                                  "contact.mobileno.number",
+                                  e.target.value
+                                )
+                              }
+                              placeholder="Enter 10-digit mobile number"
+                              maxLength="10"
+                            />
+                          </div>
+                          <ValidationMessage
+                            show={mobileError}
+                            message="Please enter a valid 10-digit mobile number"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            WhatsApp Number
+                          </label>
+                          <input
+                            type="tel"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                            value={newUser.contact.whatsappno}
+                            onChange={(e) =>
+                              updateNestedField(
+                                "contact.whatsappno",
+                                e.target.value
+                              )
+                            }
+                            placeholder="Enter WhatsApp number (optional)"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-1">
+                      <h3 className="border-b pb-2 text-lg font-semibold text-gray-800 mb-3">
+                        Address Information
+                      </h3>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Current Location{" "}
+                          <span className="text-red-500">*</span>
+                        </label>
+                        <select
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                          value={newUser.address.currlocation}
+                          onChange={(e) => handleLocationChange(e.target.value)}
+                          required
+                        >
+                          <option value="">Select Location</option>
+                          {locationOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Country
+                          </label>
+                          <input
+                            type="text"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                            value={newUser.address.country}
+                            onChange={(e) =>
+                              updateNestedField(
+                                "address.country",
+                                e.target.value
+                              )
+                            }
+                            placeholder="Enter country"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            State
+                          </label>
+                          <input
+                            type="text"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                            value={newUser.address.state}
+                            onChange={(e) =>
+                              updateNestedField("address.state", e.target.value)
+                            }
+                            placeholder="Enter state"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            District
+                          </label>
+                          <input
+                            type="text"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                            value={newUser.address.district}
+                            onChange={(e) =>
+                              updateNestedField(
+                                "address.district",
+                                e.target.value
+                              )
+                            }
+                            placeholder="Enter district"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            City
+                          </label>
+                          <input
+                            type="text"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                            value={newUser.address.city}
+                            onChange={(e) =>
+                              updateNestedField("address.city", e.target.value)
+                            }
+                            placeholder="Enter city"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Post Office
+                          </label>
+                          <input
+                            type="text"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                            value={newUser.address.postoffice}
+                            onChange={(e) =>
+                              updateNestedField(
+                                "address.postoffice",
+                                e.target.value
+                              )
+                            }
+                            placeholder="Enter post office"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            PIN Code
+                          </label>
+                          <input
+                            type="text"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                            value={newUser.address.pin}
+                            onChange={(e) =>
+                              updateNestedField("address.pin", e.target.value)
+                            }
+                            placeholder="Enter PIN code"
+                            maxLength="6"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Landmark
+                          </label>
+                          <input
+                            type="text"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                            value={newUser.address.landmark}
+                            onChange={(e) =>
+                              updateNestedField(
+                                "address.landmark",
+                                e.target.value
+                              )
+                            }
+                            placeholder="Enter landmark"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Street
+                          </label>
+                          <input
+                            type="text"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                            value={newUser.address.street}
+                            onChange={(e) =>
+                              updateNestedField(
+                                "address.street",
+                                e.target.value
+                              )
+                            }
+                            placeholder="Enter street"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Apartment/Building
+                          </label>
+                          <input
+                            type="text"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                            value={newUser.address.apartment}
+                            onChange={(e) =>
+                              updateNestedField(
+                                "address.apartment",
+                                e.target.value
+                              )
+                            }
+                            placeholder="Enter apartment/building"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Floor
+                          </label>
+                          <input
+                            type="text"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                            value={newUser.address.floor}
+                            onChange={(e) =>
+                              updateNestedField("address.floor", e.target.value)
+                            }
+                            placeholder="Enter floor"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Room
+                          </label>
+                          <input
+                            type="text"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                            value={newUser.address.room}
+                            onChange={(e) =>
+                              updateNestedField("address.room", e.target.value)
+                            }
+                            placeholder="Enter room"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="border-t pt-4">
+                      <h3 className="text-lg font-semibold text-gray-800 mb-3">
+                        Professional Information (Optional)
+                      </h3>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Category
+                          </label>
+                          <input
+                            type="text"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                            value={newUser.profession.category}
+                            onChange={(e) =>
+                              updateNestedField(
+                                "profession.category",
+                                e.target.value
+                              )
+                            }
+                            placeholder="e.g., IT, Healthcare, Education"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Job Title
+                          </label>
+                          <input
+                            type="text"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                            value={newUser.profession.job}
+                            onChange={(e) =>
+                              updateNestedField(
+                                "profession.job",
+                                e.target.value
+                              )
+                            }
+                            placeholder="e.g., Software Engineer, Doctor"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Specialization
+                          </label>
+                          <input
+                            type="text"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                            value={newUser.profession.specialization}
+                            onChange={(e) =>
+                              updateNestedField(
+                                "profession.specialization",
+                                e.target.value
+                              )
+                            }
+                            placeholder="e.g., React Developer, Cardiologist"
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
                   <div className="flex gap-3 mt-6">
@@ -1127,68 +1959,6 @@ const Receipt = () => {
             </div>
           )}
 
-          {/* Visit Question */}
-          <div className="bg-blue-50 rounded-lg p-4">
-            <label className="block text-sm font-semibold text-gray-700 mb-3">
-              Will you come to Durga Sthan, Manpur, Patwatoli to get your
-              Mahaprasad?
-            </label>
-            <div className="flex gap-6">
-              <label className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="willCome"
-                  value="YES"
-                  checked={willCome === "YES"}
-                  onChange={(e) => setWillCome(e.target.value)}
-                  className="w-4 h-4 text-green-600 focus:ring-green-500"
-                />
-                <span className="text-sm font-medium">YES</span>
-              </label>
-              <label
-                className={`flex items-center gap-2 ${
-                  isLocalUser
-                    ? "cursor-not-allowed opacity-50"
-                    : "cursor-pointer"
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="willCome"
-                  value="NO"
-                  checked={willCome === "NO"}
-                  onChange={(e) => setWillCome(e.target.value)}
-                  className="w-4 h-4 text-green-600 focus:ring-green-500"
-                  disabled={isLocalUser}
-                />
-                <span className="text-sm font-medium">NO</span>
-              </label>
-            </div>
-            {isLocalUser && (
-              <p className="text-xs text-gray-500 mt-2">
-                Courier option is not available for your location. Please select
-                "YES".
-              </p>
-            )}
-          </div>
-
-          {/* Courier Address */}
-          {willCome === "NO" && (
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Courier/Postal Address for Mahaprasad
-              </label>
-              <textarea
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                rows="3"
-                placeholder="Enter complete address for courier delivery..."
-                value={courierAddress}
-                onChange={(e) => setCourierAddress(e.target.value)}
-              />
-            </div>
-          )}
-
-          {/* --- NEW: Previous Donations Section --- */}
           {userPreviousDonations.length > 0 && (
             <div className="bg-blue-50 rounded-lg p-4">
               <h2 className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
@@ -1244,12 +2014,70 @@ const Receipt = () => {
             </div>
           )}
 
-          {/* Donation Section */}
+          <div className="grid md:grid-cols-2 gap-8">
+            <div className="bg-blue-50 rounded-lg p-4">
+              <label className="block text-sm font-semibold text-gray-700 mb-3">
+                Will you come to Durga Sthan, Manpur, Patwatoli to get your
+                Mahaprasad?
+              </label>
+              <div className="flex gap-6">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="willCome"
+                    value="YES"
+                    checked={willCome === "YES"}
+                    onChange={(e) => setWillCome(e.target.value)}
+                    className="w-4 h-4 text-green-600 focus:ring-green-500"
+                  />
+                  <span className="text-sm font-medium">YES</span>
+                </label>
+                <label
+                  className={`flex items-center gap-2 ${
+                    isLocalUser
+                      ? "cursor-not-allowed opacity-50"
+                      : "cursor-pointer"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="willCome"
+                    value="NO"
+                    checked={willCome === "NO"}
+                    onChange={(e) => setWillCome(e.target.value)}
+                    className="w-4 h-4 text-green-600 focus:ring-green-500"
+                    disabled={isLocalUser}
+                  />
+                  <span className="text-sm font-medium">NO</span>
+                </label>
+              </div>
+              {isLocalUser && (
+                <p className="text-xs text-gray-500 mt-2">
+                  Courier option is not available for your location. Please
+                  select "YES".
+                </p>
+              )}
+            </div>
+            {willCome === "NO" && (
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Courier/Postal Address for Mahaprasad
+                </label>
+                <textarea
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  rows="3"
+                  placeholder="Enter complete address for courier delivery..."
+                  value={courierAddress}
+                  onChange={(e) => setCourierAddress(e.target.value)}
+                />
+              </div>
+            )}
+          </div>
+
           <div className="bg-gray-50 rounded-lg p-4">
             <h2 className="text-xl font-semibold text-gray-800 mb-4">
               Donation Details
             </h2>
-
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1266,7 +2094,7 @@ const Receipt = () => {
                     if (selectedCat && selectedCat.packet) {
                       setQuantity("1");
                     } else {
-                      setQuantity(""); // Reset quantity for non-packet categories
+                      setQuantity("");
                     }
                   }}
                 >
@@ -1278,7 +2106,6 @@ const Receipt = () => {
                   ))}
                 </select>
               </div>
-
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Quantity
@@ -1301,12 +2128,10 @@ const Receipt = () => {
                   }
                 />
               </div>
-
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Amount
                 </label>
-
                 <div className="px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-700">
                   {selectedCategory && quantity
                     ? `₹${
@@ -1316,7 +2141,6 @@ const Receipt = () => {
                     : "₹0"}
                 </div>
               </div>
-
               <div className="flex items-end">
                 <button
                   onClick={handleAddDonation}
@@ -1327,39 +2151,28 @@ const Receipt = () => {
                 </button>
               </div>
             </div>
-
-            {/* Selected Category Details */}
-            {selectedCategory && (
-              <div className="mb-4 p-3 bg-blue-50 rounded-lg">
-                <div className="text-sm text-gray-600">
-                  <strong>Category Details:</strong>{" "}
-                  {
-                    categories.find((cat) => cat._id === selectedCategory)
-                      ?.categoryName
-                  }
-                  <br />
-                  <strong>Weight per unit:</strong>{" "}
-                  {
-                    categories.find((cat) => cat._id === selectedCategory)
-                      ?.weight
-                  }{" "}
-                  kg
-                  <br />
-                  <strong>Packet:</strong>{" "}
-                  {categories.find((cat) => cat._id === selectedCategory)
-                    ?.packet
-                    ? "Yes" // Changed from 1 to "Yes" for better readability
-                    : "No"}
-                  <br />
-                  <strong>Rate per unit:</strong> ₹{" "}
-                  {categories.find((cat) => cat._id === selectedCategory)?.rate}
+            {selectedCategoryDetails && (
+              <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 text-sm text-yellow-800 rounded-lg">
+                <div className="flex flex-wrap justify-around items-center gap-x-6 gap-y-2">
+                  <p>
+                    <strong>Rate:</strong> ₹{selectedCategoryDetails.rate}
+                  </p>
+                  <p>
+                    <strong>Weight:</strong> {selectedCategoryDetails.weight}g
+                  </p>
+                  <p>
+                    <strong>Packet:</strong>{" "}
+                    {selectedCategoryDetails.packet ? "Yes" : "No"}
+                  </p>
+                  <p>
+                    <strong>Type:</strong>{" "}
+                    {selectedCategoryDetails.categoryType || "General"}
+                  </p>
                 </div>
               </div>
             )}
-
-            {/* Donations List */}
             {donations.length > 0 && (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto mt-6">
                 <table className="w-full border border-gray-200 rounded-lg">
                   <thead className="bg-gray-100">
                     <tr>
@@ -1373,7 +2186,7 @@ const Receipt = () => {
                         Amount
                       </th>
                       <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">
-                        Weight (kg)
+                        Weight (g)
                       </th>
                       <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">
                         Packet
@@ -1383,7 +2196,6 @@ const Receipt = () => {
                       </th>
                     </tr>
                   </thead>
-
                   <tbody>
                     {donations.map((donation) => (
                       <tr
@@ -1421,9 +2233,7 @@ const Receipt = () => {
             )}
           </div>
 
-          {/* Summary Section */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Mahaprasad Details */}
             <div className="bg-blue-50 rounded-lg p-4">
               <h3 className="font-semibold text-gray-800 mb-3">
                 Mahaprasad Details
@@ -1432,7 +2242,7 @@ const Receipt = () => {
                 <div className="flex justify-between">
                   <span>Weight:</span>
                   <span className="font-medium">
-                    {totalWeight.toFixed(1)} kg
+                    {totalWeight.toFixed(1)} g
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -1441,11 +2251,9 @@ const Receipt = () => {
                 </div>
               </div>
             </div>
-
-            {/* Donation Summary */}
             <div className="bg-green-50 rounded-lg p-4">
               <h3 className="font-semibold text-gray-800 mb-3">
-                Donation Details
+                Donation Summary
               </h3>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
@@ -1480,53 +2288,66 @@ const Receipt = () => {
             </div>
           </div>
 
-          {/* Payment Method */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Payment Option
-            </label>
-            <select
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-              value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value)}
-            >
-              <option value="">Select Payment Method</option>
-              {paymentMethods.map((method) => (
-                <option key={method} value={method}>
-                  {method}
-                </option>
-              ))}
-            </select>
+          <div
+            className={`grid grid-cols-1 md:grid-cols-2 gap-6 ${
+              donationType === "group" ? "hidden" : ""
+            }`}
+          >
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Payment Option
+              </label>
+              <select
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+              >
+                <option value="">Select Payment Method</option>
+                {paymentMethods.map((method) => (
+                  <option key={method} value={method}>
+                    {method}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Remarks (Optional)
+              </label>
+              <textarea
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                rows="3"
+                placeholder="Enter any additional remarks..."
+                value={remarks}
+                onChange={(e) => setRemarks(e.target.value)}
+              />
+            </div>
           </div>
 
-          {/* Remarks */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Remarks (Optional)
-            </label>
-            <textarea
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-              rows="3"
-              placeholder="Enter any additional remarks..."
-              value={remarks}
-              onChange={(e) => setRemarks(e.target.value)}
-            />
-          </div>
-
-          {/* Submit Button */}
           <div className="flex justify-center pt-4">
-            <button
-              onClick={handleSubmit}
-              className="bg-green-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-green-700 transition-colors flex items-center gap-2 disabled:bg-green-400"
-              disabled={loading || paymentLoading}
-            >
-              <CreditCard className="h-5 w-5" />
-              {loading || paymentLoading ? "Processing..." : "Submit Receipt"}
-            </button>
+            {donationType === "individual" ? (
+              <button
+                onClick={handleSubmit}
+                className="bg-green-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-green-700 transition-colors flex items-center gap-2 disabled:bg-green-400"
+                disabled={loading || paymentLoading}
+              >
+                <CreditCard className="h-5 w-5" />
+                {loading || paymentLoading ? "Processing..." : "Submit Receipt"}
+              </button>
+            ) : (
+              <button
+                onClick={handleAddToGroup}
+                className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:bg-gray-400"
+                disabled={!selectedUser || netPayableAmount <= 0}
+              >
+                <Plus className="h-5 w-5" />
+                Add Receipt to Group
+              </button>
+            )}
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 };
 

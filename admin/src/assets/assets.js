@@ -17,6 +17,12 @@ import job_opening_list from "./job_opening_list.svg";
 import family_list from "./family_list.svg";
 import donation_list from "./donation_list.svg";
 import advertisement_list from "./advertisement_list.svg";
+import user_receipt from "./user_receipt.svg";
+import guest_receipt from "./guest_receipt.svg";
+import guest_list from "./guest_list.svg";
+import team_list from "./team_list.svg";
+import family_tree from "./family_tree.svg";
+import printing_portal from "./printing_portal.svg";
 
 export const assets = {
   add_icon,
@@ -37,4 +43,10 @@ export const assets = {
   family_list,
   donation_list,
   advertisement_list,
+  user_receipt,
+  guest_receipt,
+  guest_list,
+  team_list,
+  family_tree,
+  printing_portal,
 };

@@ -34,6 +34,9 @@ import {
   forgotPassword,
   verifyOtp,
   resetPassword,
+  loginWithOtp,
+  sendLoginOtp,
+  forgotUsername,
 } from "../controllers/userController.js";
 import authUser from "../middlewares/authUser.js";
 import {
@@ -46,8 +49,11 @@ const userRouter = express.Router();
 
 userRouter.post("/register", registerUser);
 userRouter.post("/login", loginUser);
+userRouter.post("/login-with-otp", upload.none(), loginWithOtp); // NEW
+userRouter.post("/send-login-otp", upload.none(), sendLoginOtp); // NEW
 
-// --- FORGOT PASSWORD ROUTES ---
+// --- FORGOT/RECOVERY ROUTES ---
+userRouter.post("/forgot-username", upload.none(), forgotUsername); // NEW
 userRouter.post("/forgot-password", upload.none(), forgotPassword); // Request OTP
 userRouter.post("/verify-otp", upload.none(), verifyOtp); // Verify OTP
 userRouter.post("/reset-password", upload.none(), resetPassword); // Reset Password

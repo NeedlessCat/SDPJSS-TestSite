@@ -1,10 +1,16 @@
 import mongoose from "mongoose";
 
-const adminSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-});
+const adminSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true },
+    email: { type: String, required: true, unique: true },
+    password: { type: String, required: true },
+    role: { type: String, enum: ["admin", "superadmin"], default: "admin" },
+    // Assuming your feature model is named 'feature'
+    allowedFeatures: [{ type: mongoose.Schema.Types.ObjectId, ref: "feature" }],
+  },
+  { timestamps: true }
+);
 
 const adminModel =
   mongoose.models.admin || mongoose.model("admin", adminSchema);

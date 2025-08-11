@@ -100,6 +100,87 @@ const incrementLetters = (letters) => {
   return letterArray.join("");
 };
 
+const numberToWords = (num) => {
+  const ones = [
+    "",
+    "One",
+    "Two",
+    "Three",
+    "Four",
+    "Five",
+    "Six",
+    "Seven",
+    "Eight",
+    "Nine",
+  ];
+  const tens = [
+    "",
+    "",
+    "Twenty",
+    "Thirty",
+    "Forty",
+    "Fifty",
+    "Sixty",
+    "Seventy",
+    "Eighty",
+    "Ninety",
+  ];
+  const teens = [
+    "Ten",
+    "Eleven",
+    "Twelve",
+    "Thirteen",
+    "Fourteen",
+    "Fifteen",
+    "Sixteen",
+    "Seventeen",
+    "Eighteen",
+    "Nineteen",
+  ];
+
+  const convertHundreds = (n) => {
+    let result = "";
+    if (n >= 100) {
+      result += ones[Math.floor(n / 100)] + " Hundred ";
+      n %= 100;
+    }
+    if (n >= 20) {
+      result += tens[Math.floor(n / 10)] + " ";
+      n %= 10;
+    } else if (n >= 10) {
+      result += teens[n - 10] + " ";
+      return result;
+    }
+    if (n > 0) {
+      result += ones[n] + " ";
+    }
+    return result;
+  };
+
+  if (num === 0) return "Zero";
+
+  let result = "";
+  let crore = Math.floor(num / 10000000);
+  let lakh = Math.floor((num % 10000000) / 100000);
+  let thousand = Math.floor((num % 100000) / 1000);
+  let remainder = num % 1000;
+
+  if (crore > 0) {
+    result += convertHundreds(crore) + "Crore ";
+  }
+  if (lakh > 0) {
+    result += convertHundreds(lakh) + "Lakh ";
+  }
+  if (thousand > 0) {
+    result += convertHundreds(thousand) + "Thousand ";
+  }
+  if (remainder > 0) {
+    result += convertHundreds(remainder);
+  }
+
+  return result.trim();
+};
+
 // Function to send SMS (you'll need to integrate with SMS service like Twilio)
 const sendSMS = async (mobile, username, password) => {
   try {
@@ -252,32 +333,32 @@ const registerUser = async (req, res) => {
       });
     }
 
-    // Check if email already exists (if provided)
-    if (hasEmail) {
-      const existingUserByEmail = await userModel.findOne({
-        "contact.email": email,
-      });
-      if (existingUserByEmail) {
-        return res.json({
-          success: false,
-          message: "Email already registered",
-        });
-      }
-    }
+    // // Check if email already exists (if provided)
+    // if (hasEmail) {
+    //   const existingUserByEmail = await userModel.findOne({
+    //     "contact.email": email,
+    //   });
+    //   if (existingUserByEmail) {
+    //     return res.json({
+    //       success: false,
+    //       message: "Email already registered",
+    //     });
+    //   }
+    // }
 
-    // Check if mobile already exists (if provided)
-    if (hasMobile) {
-      const existingUserByMobile = await userModel.findOne({
-        "contact.mobileno.code": mobile.code,
-        "contact.mobileno.number": mobile.number,
-      });
-      if (existingUserByMobile) {
-        return res.json({
-          success: false,
-          message: "Mobile number already registered",
-        });
-      }
-    }
+    // // Check if mobile already exists (if provided)
+    // if (hasMobile) {
+    //   const existingUserByMobile = await userModel.findOne({
+    //     "contact.mobileno.code": mobile.code,
+    //     "contact.mobileno.number": mobile.number,
+    //   });
+    //   if (existingUserByMobile) {
+    //     return res.json({
+    //       success: false,
+    //       message: "Mobile number already registered",
+    //     });
+    //   }
+    // }
 
     // Generate unique user ID
     const userId = await generateUserId();
@@ -1458,6 +1539,164 @@ const getAllAdvertisementsWithUserNames = async (req, res) => {
   }
 };
 
+// Helper function to send username via email
+const sendUsernameEmail = async (email, username, fullname) => {
+  try {
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASSWORD,
+      },
+    });
+
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: "Your Username Recovery for SDPJSS",
+      html: `
+        <p>Dear ${fullname},</p>
+        <p>As requested, we have retrieved your username for your SDPJSS account.</p>
+        <p>Your username is: <strong>${username}</strong></p>
+        <p>You can now use this username to log in or reset your password.</p>
+        <p>Best regards,<br>Your Team</p>
+      `,
+    };
+
+    await transporter.sendMail(mailOptions);
+    console.log(`Username sent to ${email}`);
+    return true;
+  } catch (error) {
+    console.error("Username email sending failed:", error);
+    return false;
+  }
+};
+// NEW: API for Forgot Username
+const forgotUsername = async (req, res) => {
+  try {
+    const { fullname, khandanid, fatherid, dob } = req.body;
+
+    if (!fullname || !khandanid || !fatherid || !dob) {
+      return res.json({
+        success: false,
+        message: "All fields (Full Name, Khandan, Father, DOB) are required.",
+      });
+    } // Find the user based on the provided details
+
+    const user = await userModel.findOne({
+      fullname,
+      khandanid,
+      fatherid,
+      dob: new Date(dob),
+    });
+
+    if (!user) {
+      return res.json({
+        success: false,
+        message:
+          "No user found with the provided details. Please check the information and try again.",
+      });
+    } // Check if user has an email
+
+    const email = user.contact.email;
+    if (!email) {
+      return res.json({
+        success: false,
+        message:
+          "User found, but no email is registered. Cannot send username automatically. Please contact support.",
+      });
+    } // Send the username to the user's email
+
+    const emailSent = await sendUsernameEmail(
+      email,
+      user.username,
+      user.fullname
+    );
+
+    if (emailSent) {
+      res.json({
+        success: true,
+        message: `Your username has been sent to your registered email: ${email}`,
+      });
+    } else {
+      res.json({
+        success: false,
+        message: "Failed to send email. Please try again later.",
+      });
+    }
+  } catch (error) {
+    console.error("Error in forgotUsername:", error);
+    res.status(500).json({ success: false, message: "Internal server error." });
+  }
+};
+
+// NEW: Send OTP for Login
+const sendLoginOtp = async (req, res) => {
+  try {
+    const { username } = req.body;
+    if (!username) {
+      return res.json({ success: false, message: "Username is required." });
+    }
+
+    const user = await userModel.findOne({ username });
+    if (!user) {
+      return res.json({ success: false, message: "User not found." });
+    }
+
+    const email = user.contact.email;
+    if (!email) {
+      return res.json({
+        success: false,
+        message: "No email registered for this account. Cannot login with OTP.",
+      });
+    } // Generate and save OTP
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    user.otp = otp;
+    user.otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 min validity
+    await user.save(); // Send OTP (reusing the forgot password OTP email function)
+
+    await sendOtpEmail(email, otp, user.fullname);
+
+    res.json({ success: true, message: "OTP sent to your registered email." });
+  } catch (error) {
+    console.error("Error sending login OTP:", error);
+    res.status(500).json({ success: false, message: "Internal server error." });
+  }
+};
+
+// NEW: Login with OTP
+const loginWithOtp = async (req, res) => {
+  try {
+    const { username, otp } = req.body;
+    if (!username || !otp) {
+      return res.json({
+        success: false,
+        message: "Username and OTP are required.",
+      });
+    }
+
+    const user = await userModel.findOne({ username });
+    if (!user) {
+      return res.json({ success: false, message: "User not found." });
+    } // Verify OTP
+
+    if (user.otp !== otp || user.otpExpires < new Date()) {
+      return res.json({ success: false, message: "Invalid or expired OTP." });
+    } // OTP is valid, clear it
+
+    user.otp = null;
+    user.otpExpires = null;
+    await user.save(); // Generate token and log in
+
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET);
+    res.json({ success: true, utoken: token });
+  } catch (error) {
+    console.error("Error logging in with OTP:", error);
+    res.status(500).json({ success: false, message: "Internal server error." });
+  }
+};
+
 // API to edit/update an advertisement
 const editAdvertisement = async (req, res) => {
   try {
@@ -1650,6 +1889,7 @@ const updateAdvertisementStatus = async (req, res) => {
 
 // --------------------------------------
 
+// 1. Updated generateBillHTML function with fixed watermark and right-aligned values
 const generateBillHTML = (donationData, userData) => {
   const {
     list,
@@ -1660,12 +1900,52 @@ const generateBillHTML = (donationData, userData) => {
     createdAt,
     _id,
     receiptId,
+    postalAddress,
   } = donationData;
-  console.log("list: ", list);
 
   const totalAmount = amount + courierCharge;
-  const paymentStatus = method === "Online" ? "PAID" : "TO BE PAID IN OFFICE";
-  const paymentStatusColor = method === "Online" ? "#28a745" : "#ffc107";
+  const paymentStatus = method === "Online" ? "PAID ONLINE" : "PAID IN OFFICE";
+  const paymentStatusColor = method === "Online" ? "#28a745" : "#4a6a04ff";
+
+  var actualAddress = "";
+  userData.address.room
+    ? (actualAddress += "Room: " + userData.address.room + ", ")
+    : (actualAddress += "");
+  userData.address.floor
+    ? (actualAddress += "Floor: " + userData.address.floor + ", ")
+    : (actualAddress += "");
+  userData.address.apartment
+    ? (actualAddress += userData.address.apartment + ", ")
+    : (actualAddress += "");
+  userData.address.landmark
+    ? (actualAddress += userData.address.landmark + ", ")
+    : (actualAddress += "");
+  userData.address.street
+    ? (actualAddress += userData.address.street + ", ")
+    : (actualAddress += "");
+  userData.address.city
+    ? (actualAddress += userData.address.city + ", ")
+    : (actualAddress += "");
+  userData.address.district
+    ? (actualAddress += userData.address.district + ", ")
+    : (actualAddress += "");
+  userData.address.state
+    ? (actualAddress += userData.address.state + ", ")
+    : (actualAddress += "");
+  userData.address.country
+    ? (actualAddress += userData.address.country)
+    : (actualAddress += "");
+  userData.address.pin
+    ? (actualAddress += " - " + userData.address.pin)
+    : (actualAddress += "");
+
+  // Convert total amount to words
+  const amountInWords = numberToWords(totalAmount);
+
+  // Helper function to format numbers in Indian style
+  const formatIndianNumber = (num) => {
+    return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  };
 
   return `
     <!DOCTYPE html>
@@ -1674,13 +1954,56 @@ const generateBillHTML = (donationData, userData) => {
       <meta charset="utf-8">
       <title>Donation Receipt</title>
       <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; color: #333; }
-        .bill-container { max-width: 800px; margin: 0 auto; border: 2px solid #ddd; padding: 30px; }
+        body { 
+          font-family: Arial, sans-serif; 
+          margin: 0; 
+          padding: 20px; 
+          color: #333;
+          position: relative;
+          background-color: white;
+        }
+        
+        /* Fixed watermark background */
+        body::before {
+          content: '';
+          position: fixed;
+          top: 50%;
+          left: 50%;
+          width: 60%;
+          height: 60%;
+          background-image: url('https://res.cloudinary.com/needlesscat/image/upload/v1754307740/logo_unr2rc.jpg');
+          background-repeat: no-repeat;
+          background-position: center center;
+          background-size: contain;
+          transform: translate(-50%, -50%);
+          opacity: 0.1;
+          z-index: 100;
+          pointer-events: none;
+        }
+          
+        
+        .bill-container { 
+          max-width: 800px; 
+          margin: 0 auto; 
+          border: 2px solid #ddd; 
+          padding: 30px;
+          background-color: rgba(255, 255, 255, 0.98);
+          position: relative;
+          z-index: 1;
+        }
+        .above-header { font-size: 12px; color: #666; margin-bottom: 10px; display: flex; justify-content: space-between }
         .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 30px; }
-        .org-name { font-size: 28px; font-weight: bold; color: #d32f2f; margin-bottom: 5px; }
-        .org-full-name { font-size: 16px; color: #666; margin-bottom: 10px; }
-        .org-address { font-size: 14px; color: #666; }
-        .receipt-title { font-size: 24px; font-weight: bold; text-align: center; margin: 20px 0; color: #333; }
+        .org-name { font-size: 24px; font-weight: bold; color: #d32f2f; margin-bottom: 5px; }
+        .org-address { font-size: 10px; color: #666; }
+        
+        .org-contact-info { 
+          font-size: 12px; 
+          color: #666; 
+          margin-top: 10px;
+          line-height: 1.4;
+        }
+        
+        .receipt-title { font-size: 20px; font-weight: bold; text-align: center; margin: 20px 0; color: #333; }
         .receipt-info { display: flex; justify-content: space-between; margin-bottom: 20px; }
         .receipt-number { font-weight: bold; }
         .date { font-weight: bold; }
@@ -1690,20 +2013,49 @@ const generateBillHTML = (donationData, userData) => {
         .donation-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
         .donation-table th, .donation-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
         .donation-table th { background-color: #f8f9fa; font-weight: bold; }
+        
+        /* Right align specific columns */
+        .donation-table th:nth-child(2),
+        .donation-table th:nth-child(3),
+        .donation-table th:nth-child(4),
+        .donation-table th:nth-child(5),
+        .donation-table td:nth-child(2),
+        .donation-table td:nth-child(3),
+        .donation-table td:nth-child(4),
+        .donation-table td:nth-child(5) {
+          text-align: right;
+        }
+        
         .total-row { font-weight: bold; background-color: #f8f9fa; }
+        
+        .amount-in-words {
+          background-color: #f8f9fa;
+          padding: 15px;
+          border-radius: 5px;
+          margin: 20px 0;
+          border-left: 4px solid #d32f2f;
+        }
+        
         .payment-info { display: flex; justify-content: space-between; align-items: center; padding: 15px; background-color: #f8f9fa; border-radius: 5px; margin-top: 20px; }
         .payment-method { font-weight: bold; }
         .payment-status { padding: 5px 15px; border-radius: 20px; color: white; font-weight: bold; }
-        .footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; }
+        .footer { text-align: center; margin-top: 25px; padding-top: 15px; border-top: 1px solid #ddd; color: #666; }
         .transaction-id { font-size: 12px; color: #666; margin-top: 10px; }
       </style>
     </head>
     <body>
       <div class="bill-container">
+        <div class="above-header">
+          <div><b>Estd. 1939</b></div>
+          <div><b>Reg. No. 2020/272</b></div>
+        </div>
         <div class="header">
-          <div class="org-name">SDPJSS</div>
-          <div class="org-full-name">Shree Durga Patwaye Jati Sudhar Samiti</div>
-          <div class="org-address">Durga Asthan, Manpur, Gaya, Bihar, India - 823003</div>
+          <div class="org-name">SHREE DURGAJI PATWAY JATI SUDHAR SAMITI</div>
+          <div class="org-address">Shree Durga Sthan, Patwatoli, Manpur, P.O. Buniyadganj, Gaya Ji - 823003</div>
+          <div class="org-contact-info">
+            <div><strong>PAN:</strong> ABBTS1301C</div>
+            <div><strong>Contact:</strong> 0631 2952160, +91 9472030916 | <strong>Email:</strong> sdpjssmanpur@gmail.com</div>
+          </div>
         </div>
 
         <div class="receipt-title">DONATION RECEIPT</div>
@@ -1730,12 +2082,10 @@ const generateBillHTML = (donationData, userData) => {
       : ""
   }</p>
           <p><strong>Address:</strong> ${
-            userData.address.street ? userData.address.street + ", " : ""
-          }${userData.address.city ? userData.address.city + ", " : ""}${
-    userData.address.district ? userData.address.district + ", " : ""
-  }${userData.address.state ? userData.address.state + ", " : ""}${
-    userData.address.country ? userData.address.country : ""
-  } ${userData.address.pin ? "- " + userData.address.pin : ""}</p>
+            postalAddress === "Will collect from Durga Sthan"
+              ? actualAddress
+              : postalAddress
+          }</p>
         </div>
 
         <div class="table-container">
@@ -1745,7 +2095,7 @@ const generateBillHTML = (donationData, userData) => {
                 <th>Item</th>
                 <th>Quantity</th>
                 <th>Amount (₹)</th>
-                <th>Weight (Kg)</th>
+                <th>Weight (g)</th>
                 <th>Packet</th>
               </tr>
             </thead>
@@ -1755,9 +2105,9 @@ const generateBillHTML = (donationData, userData) => {
                   (item) => `
                 <tr>
                   <td>${item.category}</td>
-                  <td>${item.number}</td>
-                  <td>₹${item.amount}</td>
-                  <td>${item.quantity}</td>
+                  <td>${formatIndianNumber(item.number)}</td>
+                  <td>₹${formatIndianNumber(item.amount)}</td>
+                  <td>${formatIndianNumber(item.quantity)}</td>
                   <td>${item.isPacket ? 1 : 0}</td>
                 </tr>
               `
@@ -1766,19 +2116,23 @@ const generateBillHTML = (donationData, userData) => {
               <tr>
                 <td><strong>Courier Charges</strong></td>
                 <td>-</td>
-                <td><strong>₹${courierCharge}</strong></td>
+                <td><strong>₹${formatIndianNumber(courierCharge)}</strong></td>
                 <td>-</td>
                 <td>-</td>
               </tr>
               <tr class="total-row">
                 <td><strong>TOTAL AMOUNT</strong></td>
                 <td>-</td>
-                <td><strong>₹${totalAmount}</strong></td>
+                <td><strong>₹${formatIndianNumber(totalAmount)}</strong></td>
                 <td>-</td>
                 <td>-</td>
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <div class="amount-in-words">
+          <strong>Amount in Words:</strong> ${amountInWords} Rupees Only
         </div>
 
         <div class="payment-info">
@@ -1792,8 +2146,7 @@ const generateBillHTML = (donationData, userData) => {
 
         <div class="footer">
           <p>Thank you for your generous donation!</p>
-          <p>This is a computer-generated receipt.</p>
-          <p>For any queries, please contact us at Durga Asthan, Manpur, Gaya, Bihar, India - 823003</p>
+          <p>For any queries, please contact us at: Durga Asthan, Manpur, Gaya, Bihar, India - 823003</p>
         </div>
       </div>
     </body>
@@ -1851,7 +2204,7 @@ const sendDonationReceiptEmail = async (email, donationData, userData) => {
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <h2 style="color: #d32f2f;">Thank you for your donation!</h2>
           <p>Dear ${userData.fullname},</p>
-          <p>We have received your donation. Please find your receipt below and attached as PDF.</p>
+          <p>We have received your donation. Please find your receipt below attached as PDF.</p>
           
           <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
             <h3>Quick Summary:</h3>
@@ -1865,12 +2218,11 @@ const sendDonationReceiptEmail = async (email, donationData, userData) => {
             }; font-weight: bold;">${paymentStatus}</span></p>
           </div>
           
-          ${billHTML}
           
           <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; text-align: center;">
             <p>Best regards,<br>
             <strong>SDPJSS Team</strong><br>
-            Shree Durga Patwaye Jati Sudhar Samiti<br>
+            Shree Durga Ji Patway Jati Sudhar Samiti<br>
             Durga Asthan, Manpur, Gaya, Bihar, India - 823003</p>
           </div>
         </div>
@@ -1993,6 +2345,7 @@ const createDonationOrder = async (req, res) => {
 
       // Get user data and send email
       const userData = await userModel.findById(userId);
+      console.log(userData);
       if (userData && userData.contact.email) {
         await sendDonationReceiptEmail(
           userData.contact.email,
@@ -2113,12 +2466,10 @@ const verifyDonationPayment = async (req, res) => {
       .populate("userId", "fullname contact");
 
     if (!updatedDonation) {
-      return res
-        .status(404)
-        .json({
-          success: false,
-          message: "Donation record not found after update",
-        });
+      return res.status(404).json({
+        success: false,
+        message: "Donation record not found after update",
+      });
     }
 
     res.json({
@@ -2329,32 +2680,38 @@ const sendOtpEmail = async (email, otp, fullname) => {
   }
 };
 
-// API for Forgot Password (Request OTP)
+// MODIFIED: forgotPassword to use username
 const forgotPassword = async (req, res) => {
   try {
-    const { email } = req.body;
+    const { username } = req.body;
 
-    if (!email || !validator.isEmail(email)) {
+    if (!username) {
       return res.json({
         success: false,
-        message: "Please enter a valid email address.",
+        message: "Please enter your username.",
       });
     }
 
-    const user = await userModel.findOne({ "contact.email": email });
+    const user = await userModel.findOne({ username });
 
     if (!user) {
       return res.json({
         success: false,
-        message: "User with this email does not exist.",
+        message: "User with this username does not exist.",
       });
     }
-
+    const email = user.contact.email;
+    if (!email) {
+      return res.json({
+        success: false,
+        message:
+          "No email is registered for this account. Cannot reset password.",
+      });
+    }
     // Generate a 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // OTP valid for 10 minutes
 
-    // Save OTP and its expiration to the user document
     user.otp = otp;
     user.otpExpires = otpExpires;
     await user.save();
@@ -2365,7 +2722,7 @@ const forgotPassword = async (req, res) => {
     if (emailSent) {
       res.json({
         success: true,
-        message: "OTP sent to your email. Please check your inbox.",
+        message: "OTP sent to your registered email. Please check your inbox.",
       });
     } else {
       res.json({
@@ -2375,40 +2732,36 @@ const forgotPassword = async (req, res) => {
     }
   } catch (error) {
     console.error("Error in forgotPassword:", error);
-    res.json({ success: false, message: "Internal server error." });
+    res.status(500).json({ success: false, message: "Internal server error." });
   }
 };
 
-// API to Verify OTP
+// MODIFIED: verifyOtp to use username
 const verifyOtp = async (req, res) => {
   try {
-    const { email, otp } = req.body;
+    const { username, otp } = req.body;
 
-    if (!email || !validator.isEmail(email) || !otp) {
+    if (!username || !otp) {
       return res.json({
         success: false,
-        message: "Email and OTP are required.",
+        message: "Username and OTP are required.",
       });
     }
 
-    const user = await userModel.findOne({ "contact.email": email });
+    const user = await userModel.findOne({ username });
 
     if (!user) {
       return res.json({ success: false, message: "User not found." });
     }
 
-    if (user.otp !== otp) {
-      return res.json({ success: false, message: "Invalid OTP." });
-    }
-
-    if (user.otpExpires < new Date()) {
+    if (user.otp !== otp || user.otpExpires < new Date()) {
       return res.json({
         success: false,
-        message: "OTP has expired. Please request a new one.",
+        message: "OTP has expired or is invalid. Please request a new one.",
       });
     }
 
-    // OTP is valid, clear it from the user document to prevent reuse
+    // Clear OTP fields after successful verification
     user.otp = null;
     user.otpExpires = null;
     await user.save();
@@ -2419,19 +2772,19 @@ const verifyOtp = async (req, res) => {
     });
   } catch (error) {
     console.error("Error in verifyOtp:", error);
-    res.json({ success: false, message: "Internal server error." });
+    res.status(500).json({ success: false, message: "Internal server error." });
   }
 };
 
-// API to Reset Password
+// MODIFIED: resetPassword to use username
 const resetPassword = async (req, res) => {
   try {
-    const { email, newPassword } = req.body;
+    const { username, newPassword } = req.body;
 
-    if (!email || !validator.isEmail(email) || !newPassword) {
+    if (!username || !newPassword) {
       return res.json({
         success: false,
-        message: "Email and new password are required.",
+        message: "Username and new password are required.",
       });
     }
 
@@ -2442,42 +2795,29 @@ const resetPassword = async (req, res) => {
       });
     }
 
-    const user = await userModel.findOne({ "contact.email": email });
+    const user = await userModel.findOne({ username });
 
     if (!user) {
       return res.json({ success: false, message: "User not found." });
     }
 
-    // Hash the new password
     const saltRounds = 10;
     const hashedNewPassword = await bcrypt.hash(newPassword, saltRounds);
 
-    // Update the user's password
     user.password = hashedNewPassword;
     await user.save();
 
-    // Send a confirmation email that the password has been reset (without the password itself)
-    const resetConfirmationEmailSent = await sendPasswordResetConfirmationEmail(
-      email,
-      user.fullname
-    );
-
-    if (resetConfirmationEmailSent) {
-      res.json({
-        success: true,
-        message:
-          "Password reset successfully. A confirmation email has been sent.",
-      });
-    } else {
-      res.json({
-        success: true,
-        message:
-          "Password reset successfully, but failed to send confirmation email.",
-      });
+    const email = user.contact.email;
+    if (email) {
+      await sendPasswordResetConfirmationEmail(email, user.fullname);
     }
+    res.json({
+      success: true,
+      message: "Password has been reset successfully.",
+    });
   } catch (error) {
     console.error("Error in resetPassword:", error);
-    res.json({ success: false, message: "Internal server error." });
+    res.status(500).json({ success: false, message: "Internal server error." });
   }
 };
 
@@ -2551,4 +2891,7 @@ export {
   forgotPassword,
   verifyOtp,
   resetPassword,
+  forgotUsername,
+  sendLoginOtp,
+  loginWithOtp,
 };

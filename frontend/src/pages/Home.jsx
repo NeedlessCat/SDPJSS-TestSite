@@ -3,6 +3,7 @@ import Header from "../components/Header";
 import StepsMenu from "../components/StepsMenu";
 import Notice from "../components/Notice";
 import AccountStatusModal from "../components/modalbox/ApprovalStatusModal";
+import ServicesGallery from "../components/ServiceGallery";
 
 const Home = () => {
   return (
@@ -13,6 +14,7 @@ const Home = () => {
       <Header />
       <Notice />
       <StepsMenu />
+      <ServicesGallery />
     </div>
   );
 };

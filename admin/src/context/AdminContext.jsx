@@ -1,7 +1,9 @@
 import axios from "axios";
+import { useEffect } from "react";
 import { useState } from "react";
 import { createContext } from "react";
 import { toast } from "react-toastify";
+import { jwtDecode } from "jwt-decode";
 
 export const AdminContext = createContext();
 
@@ -9,6 +11,12 @@ const AdminContextProvider = (props) => {
   const [aToken, setAToken] = useState(
     localStorage.getItem("aToken") ? localStorage.getItem("aToken") : ""
   );
+  const [adminRole, setAdminRole] = useState(null);
+  const [allowedFeatures, setAllowedFeatures] = useState([]);
+  const [adminName, setAdminName] = useState(null); // <-- Add new state for name
+
+  const [guestUserList, setGuestUserList] = useState([]);
+  const [guestUserCount, setGuestUserCount] = useState(0);
   // New state variables for lists and counts
   const [familyCount, setFamilyCount] = useState(0);
   const [userList, setUserList] = useState([]);
@@ -29,6 +37,62 @@ const AdminContextProvider = (props) => {
 
   const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
+  useEffect(() => {
+    const decodeToken = () => {
+      if (aToken) {
+        // Save token to local storage on change
+        localStorage.setItem("aToken", aToken);
+        try {
+          const decodedToken = jwtDecode(aToken);
+          setAdminRole(decodedToken.role);
+          // For superadmin, allowedFeatures might not be in the token, which is fine.
+          // For regular admins, set their specific permissions.
+          setAllowedFeatures(decodedToken.allowedFeatures || []);
+          console.log("decode: ", decodedToken);
+          setAdminName(decodedToken.name || null);
+        } catch (error) {
+          console.error("Invalid token:", error);
+          // If token is invalid, log the user out
+          setAToken("");
+          setAdminRole(null);
+          setAllowedFeatures([]);
+          localStorage.removeItem("aToken");
+        }
+      } else {
+        // Clear role, permissions, and local storage on logout
+        localStorage.removeItem("aToken");
+        setAdminRole(null);
+        setAllowedFeatures([]);
+        setAdminName(null);
+      }
+    };
+
+    decodeToken();
+  }, [aToken]);
+
+  // NEW: Function to get all guest users
+  const getGuestUserList = async () => {
+    if (!aToken) return;
+    try {
+      const { data } = await axios.get(
+        backendUrl + "/api/additional/all-guest-users",
+        {
+          headers: { aToken },
+        }
+      );
+      console.log("getALLGuest: ", data);
+      if (data.success) {
+        setGuestUserList(data.guestUsers);
+        setGuestUserCount(data.count);
+        return data;
+      } else {
+        toast.error(data.message);
+      }
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
   // Get family list with count
   const getFamilyList = async () => {
     try {
@@ -44,7 +108,13 @@ const AdminContextProvider = (props) => {
       toast.error(error.message);
     }
   };
-
+  useEffect(() => {
+    if (aToken) {
+      getUserList();
+      getGuestUserList(); // Fetch guest users on load
+      // ... any other initial fetches
+    }
+  }, [aToken]);
   // Load users by khandan ID for father selection
   const loadUsersByKhandan = async (khandanId) => {
     try {
@@ -489,6 +559,11 @@ const AdminContextProvider = (props) => {
     loadKhandans,
     loadUsersByKhandan,
     getKhandanById,
+    guestUserList,
+    guestUserCount,
+    adminRole,
+    allowedFeatures,
+    adminName,
   };
 
   return (
