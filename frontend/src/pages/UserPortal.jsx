@@ -8,12 +8,15 @@ import {
 } from "react-router-dom";
 import { AppContext } from "../context/AppContext";
 import { toast } from "react-toastify";
+import axios from "axios";
 
 import Advertisement from "../components/userfiles/Advertisement";
 import ProfileSection from "../components/userfiles/ProfileSection";
 import JobOpenings from "../components/userfiles/JobOpenings";
 import StaffRequirements from "../components/userfiles/StaffRequirements";
 import DonationSection from "../components/userfiles/DonationSection";
+import { useState } from "react";
+import { useEffect } from "react";
 
 // Verification Pending Component
 const VerificationPending = () => {
@@ -129,19 +132,58 @@ const VerificationPending = () => {
   );
 };
 
-const tabs = [
-  { label: "Profile", path: "profile" },
-  { label: "Job Openings", path: "jobs" },
-  { label: "Staff Requirements", path: "staff-requirements" },
-  { label: "Donations", path: "donations" },
-  { label: "Advertisements", path: "advertisements" },
-];
+// Component mapping for dynamic routing
+const componentMap = {
+  "/profile": ProfileSection,
+  "/jobs": JobOpenings,
+  "/job-openings": JobOpenings,
+  "/staff-requirements": StaffRequirements,
+  "/donations": DonationSection,
+  "/advertisements": Advertisement,
+};
 
 const UserPortal = () => {
   const location = useLocation();
   const currentPath = location.pathname.split("/")[2] || "profile";
-  const { userData, loading, setUToken, setUserData } = useContext(AppContext);
+  const { userData, loading, setUToken, setUserData, backendUrl, utoken } =
+    useContext(AppContext);
   const navigate = useNavigate();
+
+  // State to hold the fetched features
+  const [features, setFeatures] = useState([]);
+  const [featuresLoading, setFeaturesLoading] = useState(true);
+
+  // Function to fetch features from the backend
+  const fetchFeatures = async () => {
+    try {
+      setFeaturesLoading(true);
+      const response = await axios.get(`${backendUrl}/api/user/list-features`, {
+        headers: { utoken },
+      });
+      if (response.data.success) {
+        // Filter for active features and set them to state
+        const activeFeatures = response.data.data.filter(
+          (feature) => feature.isActive
+        );
+        setFeatures(activeFeatures);
+        console.log("Active features:", activeFeatures);
+      } else {
+        toast.error(response.data.message);
+      }
+    } catch (error) {
+      toast.error("Failed to load navigation features.");
+      console.error(error);
+    } finally {
+      setFeaturesLoading(false);
+    }
+  };
+
+  // useEffect to call fetchFeatures when the component mounts
+  useEffect(() => {
+    if (utoken) {
+      fetchFeatures();
+    }
+  }, [utoken]);
 
   const handleLogout = () => {
     localStorage.removeItem("utoken");
@@ -152,7 +194,7 @@ const UserPortal = () => {
   };
 
   // Show loading state
-  if (loading) {
+  if (loading || featuresLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -224,6 +266,38 @@ const UserPortal = () => {
     );
   }
 
+  // Generate routes dynamically from features
+  const generateRoutes = () => {
+    const routes = features.map((feature) => {
+      const Component =
+        componentMap[feature.link] ||
+        (() => (
+          <div className="p-4 text-center">
+            <h2 className="text-xl font-semibold text-gray-800 mb-2">
+              {feature.featureName}
+            </h2>
+            <p className="text-gray-600">
+              This feature is coming soon. Component not yet implemented.
+            </p>
+          </div>
+        ));
+
+      return (
+        <Route key={feature._id} path={feature.link} element={<Component />} />
+      );
+    });
+
+    // Add fallback route - redirect to first available feature or profile
+    const fallbackRoute = features.length > 0 ? features[0].route : "profile";
+    const FallbackComponent = componentMap[fallbackRoute] || ProfileSection;
+
+    routes.push(
+      <Route key="fallback" path="*" element={<FallbackComponent />} />
+    );
+
+    return routes;
+  };
+
   return (
     <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
       <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6">
@@ -232,19 +306,19 @@ const UserPortal = () => {
           style={{ msOverflowStyle: "none", scrollbarWidth: "none" }}
         >
           <div className="flex gap-1 sm:gap-2 min-w-max">
-            {tabs.map((tab) => (
+            {features.map((feature) => (
               <NavLink
-                key={tab.path}
-                to={`/user-portal/${tab.path}`}
+                key={feature._id}
+                to={`/user-portal${feature.link}`}
                 className={({ isActive }) =>
-                  `px-4 py-2 rounded-lg font-medium transition-colors ${
+                  `px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap ${
                     isActive
                       ? "bg-red-100 text-red-700"
                       : "text-gray-600 hover:text-gray-900"
                   }`
                 }
               >
-                {tab.label}
+                {feature.featureName}
               </NavLink>
             ))}
           </div>
@@ -252,15 +326,7 @@ const UserPortal = () => {
       </div>
 
       <div className="p-4">
-        <Routes>
-          <Route path="profile" element={<ProfileSection />} />
-          <Route path="jobs" element={<JobOpenings />} />
-          <Route path="staff-requirements" element={<StaffRequirements />} />
-          <Route path="donations" element={<DonationSection />} />
-          <Route path="advertisements" element={<Advertisement />} />
-          {/* Fallback to profile */}
-          <Route path="*" element={<ProfileSection />} />
-        </Routes>
+        <Routes>{generateRoutes()}</Routes>
       </div>
     </div>
   );

@@ -4,6 +4,7 @@ import {
   getAllAdvertisementsWithUserNames,
   getAllJobOpeningsWithUserNames,
   getAllStaffRequirementsWithUserNames,
+  listUserFeatures,
 } from "../controllers/userController.js";
 import nodemailer from "nodemailer";
 import { getNoticeList } from "../controllers/adminController.js";
@@ -18,6 +19,7 @@ commonRouter.get("/get-jobs", getAllJobOpeningsWithUserNames);
 // Notice routes
 commonRouter.get("/notice-list", getNoticeList);
 commonRouter.get("/get-team-members", getTeamMembers);
+commonRouter.get("/public-features", listUserFeatures);
 
 // --- Nodemailer Transport Configuration ---
 // This is the core part that sends the email.

@@ -37,6 +37,7 @@ import {
   loginWithOtp,
   sendLoginOtp,
   forgotUsername,
+  listUserFeatures,
 } from "../controllers/userController.js";
 import authUser from "../middlewares/authUser.js";
 import {
@@ -170,5 +171,6 @@ userRouter.get("/get-all-donations", authUser, getAllDonations);
 // Get donation statistics
 userRouter.get("/donation-stats", authUser, getDonationStats);
 userRouter.get("/courier-charges", getCourierCharges);
+userRouter.get("/list-features", authUser, listUserFeatures);
 
 export default userRouter;

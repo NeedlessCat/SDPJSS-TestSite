@@ -1,5 +1,5 @@
 import React, { useContext, useState, useEffect, useMemo } from "react";
-import Select from "react-select"; // Import react-select
+import Select from "react-select";
 import { AppContext } from "../context/AppContext";
 import axios from "axios";
 import { toast } from "react-toastify";
@@ -13,10 +13,7 @@ const LoginPage = () => {
     utoken,
     setUToken,
     khandanList,
-    usersList,
     loadKhandans,
-    loadUsersByKhandan,
-    getKhandanById,
   } = useContext(AppContext);
 
   const navigate = useNavigate();
@@ -30,10 +27,8 @@ const LoginPage = () => {
 
   // --- Registration fields ---
   const [fullname, setFullname] = useState("");
-  const [selectedKhandan, setSelectedKhandan] = useState("");
   const [selectedKhandanId, setSelectedKhandanId] = useState("");
-  const [fatherId, setFatherId] = useState("");
-  const [isEldest, setIsEldest] = useState(false);
+  const [fatherName, setFatherName] = useState("");
   const [gender, setGender] = useState("");
   const [dob, setDob] = useState("");
   const [email, setEmail] = useState("");
@@ -49,24 +44,27 @@ const LoginPage = () => {
     street: "",
   });
 
+  // --- NEW: State for real-time validation errors ---
+  const [nameError, setNameError] = useState("");
+  const [fatherNameError, setFatherNameError] = useState("");
+  const [dobError, setDobError] = useState("");
+
   // --- Forgot Password fields ---
-  const [forgotPasswordUsername, setForgotPasswordUsername] = useState(""); // RENAMED from forgotPasswordEmail
+  const [forgotPasswordUsername, setForgotPasswordUsername] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [forgotPasswordStep, setForgotPasswordStep] = useState(1); // Step 1 is now for Username
+  const [forgotPasswordStep, setForgotPasswordStep] = useState(1);
   const [otpTimer, setOtpTimer] = useState(0);
   const [isResendingOtp, setIsResendingOtp] = useState(false);
 
-  // --- NEW: Forgot Username fields ---
+  // --- Forgot Username fields ---
   const [forgotUsernameFullname, setForgotUsernameFullname] = useState("");
   const [forgotUsernameKhandanId, setForgotUsernameKhandanId] = useState("");
-  const [forgotUsernameFatherId, setForgotUsernameFatherId] = useState("");
+  const [forgotUsernameFatherName, setForgotUsernameFatherName] = useState("");
   const [forgotUsernameDob, setForgotUsernameDob] = useState("");
 
   // --- Effects ---
-
-  // Timer effect for OTP resend
   useEffect(() => {
     let interval;
     if (otpTimer > 0) {
@@ -77,12 +75,10 @@ const LoginPage = () => {
     return () => clearInterval(interval);
   }, [otpTimer]);
 
-  // Load khandans on component mount
   useEffect(() => {
     loadKhandans();
   }, []);
 
-  // Redirect if already logged in
   useEffect(() => {
     if (utoken) {
       navigate("/");
@@ -90,7 +86,6 @@ const LoginPage = () => {
   }, [utoken, navigate]);
 
   // --- Helper Functions ---
-
   const capitalizeEachWord = (str) => {
     if (!str) return "";
     return str
@@ -105,7 +100,6 @@ const LoginPage = () => {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // Helper function to format khandan option display for react-select
   const formatKhandanOption = (khandan) => {
     let displayText = khandan.name;
     if (khandan.address.landmark) {
@@ -118,7 +112,27 @@ const LoginPage = () => {
     return displayText;
   };
 
-  // Memoize khandan options for react-select to prevent re-renders
+  // --- NEW: Validation function for names ---
+  const validateName = (name, fieldName) => {
+    if (/\s{2,}/.test(name)) {
+      return `${fieldName} cannot contain multiple spaces.`;
+    }
+    return "";
+  };
+
+  // --- NEW: Validation function for Date of Birth ---
+  const validateDob = (dobString) => {
+    if (!dobString) return "";
+    const dob = new Date(dobString);
+    const tenYearsAgo = new Date();
+    tenYearsAgo.setFullYear(tenYearsAgo.getFullYear() - 10);
+
+    if (dob > tenYearsAgo) {
+      return "You must be at least 10 years old to register.";
+    }
+    return "";
+  };
+
   const khandanOptions = useMemo(
     () =>
       khandanList.map((khandan) => ({
@@ -129,6 +143,23 @@ const LoginPage = () => {
   );
 
   // --- Handlers ---
+  const handleFullnameChange = (e) => {
+    const value = capitalizeEachWord(e.target.value);
+    setFullname(value);
+    setNameError(validateName(value, "Full Name"));
+  };
+
+  const handleFatherNameChange = (e) => {
+    const value = capitalizeEachWord(e.target.value);
+    setFatherName(value);
+    setFatherNameError(validateName(value, "Father's Name"));
+  };
+
+  const handleDobChange = (e) => {
+    const value = e.target.value;
+    setDob(value);
+    setDobError(validateDob(value));
+  };
 
   const handleLocationChange = (location) => {
     setAddress((prev) => ({ ...prev, currlocation: location }));
@@ -184,53 +215,30 @@ const LoginPage = () => {
     }
   };
 
-  // Updated handler for react-select
-  const handleKhandanChange = async (
-    selectedOption,
-    setKhandanId,
-    setFatherIdState,
-    setIsEldestState,
-    forForm
-  ) => {
-    const khandanId = selectedOption ? selectedOption.value : "";
-    setKhandanId(khandanId);
-
-    if (khandanId) {
-      loadUsersByKhandan(khandanId);
-    }
-    // Reset father selection for the respective form
-    if (forForm === "register") {
-      setFatherId("");
-      setIsEldest(false);
-    } else if (forForm === "forgotUsername") {
-      setForgotUsernameFatherId("");
-    }
-  };
-
-  const handleEldestChange = (checked) => {
-    setIsEldest(checked);
-    setFatherId(checked ? selectedKhandanId : "");
-  };
-
   // --- API Call Functions ---
-
   const onSubmitHandler = async (event) => {
     event.preventDefault();
     setLoading(true);
     try {
       if (state === "Register") {
+        if (nameError || fatherNameError || dobError) {
+          toast.error("Please fix the errors before submitting.");
+          setLoading(false);
+          return;
+        }
         const hasEmail = email && email.trim() !== "";
         const hasMobile = mobile.number && mobile.number.trim() !== "";
         if (!hasEmail && !hasMobile) {
           toast.error(
             "At least one contact method (email or mobile) is required"
           );
+          setLoading(false);
           return;
         }
         const registrationData = {
           fullname,
           khandanid: selectedKhandanId,
-          fatherid: isEldest ? selectedKhandanId : fatherId,
+          fatherName: fatherName,
           gender,
           dob,
           email: hasEmail ? email : undefined,
@@ -252,7 +260,6 @@ const LoginPage = () => {
           toast.error(data.message);
         }
       } else {
-        // Login
         const { data } = await axios.post(`${backendUrl}/api/user/login`, {
           username,
           password,
@@ -278,7 +285,6 @@ const LoginPage = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      // Send username instead of email
       const { data } = await axios.post(
         `${backendUrl}/api/user/forgot-password`,
         { username: forgotPasswordUsername }
@@ -286,7 +292,7 @@ const LoginPage = () => {
       if (data.success) {
         toast.success(data.message);
         setForgotPasswordStep(2);
-        setOtpTimer(600); // 10 minutes
+        setOtpTimer(600);
       } else {
         toast.error(data.message);
       }
@@ -301,7 +307,6 @@ const LoginPage = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      // Use username to verify OTP
       const { data } = await axios.post(`${backendUrl}/api/user/verify-otp`, {
         username: forgotPasswordUsername,
         otp: otpCode,
@@ -331,7 +336,7 @@ const LoginPage = () => {
     }
     setLoading(true);
     try {
-      // Use username to reset password
+      console.log(newPassword);
       const { data } = await axios.post(
         `${backendUrl}/api/user/reset-password`,
         { username: forgotPasswordUsername, newPassword }
@@ -353,7 +358,6 @@ const LoginPage = () => {
     if (otpTimer > 0) return;
     setIsResendingOtp(true);
     try {
-      // Use username to resend OTP
       const { data } = await axios.post(
         `${backendUrl}/api/user/forgot-password`,
         { username: forgotPasswordUsername }
@@ -372,7 +376,7 @@ const LoginPage = () => {
   };
 
   const resetForgotPasswordFlow = () => {
-    setForgotPasswordUsername(""); // UPDATED
+    setForgotPasswordUsername("");
     setOtpCode("");
     setNewPassword("");
     setConfirmPassword("");
@@ -381,7 +385,7 @@ const LoginPage = () => {
     setState("Login");
   };
 
-  // --- NEW: Forgot Username Flow ---
+  // --- Forgot Username Flow ---
   const handleForgotUsernameRequest = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -389,7 +393,7 @@ const LoginPage = () => {
       const payload = {
         fullname: forgotUsernameFullname,
         khandanid: forgotUsernameKhandanId,
-        fatherid: forgotUsernameFatherId,
+        fatherName: forgotUsernameFatherName,
         dob: forgotUsernameDob,
       };
       const { data } = await axios.post(
@@ -398,7 +402,7 @@ const LoginPage = () => {
       );
       if (data.success) {
         toast.success(data.message);
-        resetForgotUsernameFlow(); // Navigate back to login
+        resetForgotUsernameFlow();
       } else {
         toast.error(data.message);
       }
@@ -414,13 +418,12 @@ const LoginPage = () => {
   const resetForgotUsernameFlow = () => {
     setForgotUsernameFullname("");
     setForgotUsernameKhandanId("");
-    setForgotUsernameFatherId("");
+    setForgotUsernameFatherName("");
     setForgotUsernameDob("");
     setState("Login");
   };
 
-  // --- RENDER LOGIC ---
-
+  // --- Render Logic ---
   const renderButton = (text) => (
     <button
       type="submit"
@@ -432,7 +435,6 @@ const LoginPage = () => {
   );
 
   // --- Conditional Rendering of Forms ---
-
   if (state === "ForgotPassword") {
     return (
       <div className="min-h-screen flex items-center justify-center px-2 py-4 sm:px-4 sm:py-8">
@@ -456,7 +458,6 @@ const LoginPage = () => {
                   onSubmit={handleForgotPasswordRequest}
                   className="flex flex-col gap-4"
                 >
-                  {/* Username Input */}
                   <div className="w-full">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Username <span className="text-red-500">*</span>
@@ -475,10 +476,11 @@ const LoginPage = () => {
                   {renderButton("Send OTP")}
                 </form>
               )}
-
               {forgotPasswordStep === 2 && (
-                <form onSubmit={handleVerifyOtp}>
-                  {/* OTP Input & Resend */}
+                <form
+                  onSubmit={handleVerifyOtp}
+                  className="flex flex-col gap-4"
+                >
                   <div className="w-full">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       OTP <span className="text-red-500">*</span>
@@ -512,8 +514,10 @@ const LoginPage = () => {
                 </form>
               )}
               {forgotPasswordStep === 3 && (
-                <form onSubmit={handleResetPassword}>
-                  {/* New Password & Confirm Password Inputs */}
+                <form
+                  onSubmit={handleResetPassword}
+                  className="flex flex-col gap-4"
+                >
                   <div className="w-full">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       New Password <span className="text-red-500">*</span>
@@ -567,7 +571,6 @@ const LoginPage = () => {
     );
   }
 
-  // NEW: Forgot Username Form JSX
   if (state === "ForgotUsername") {
     return (
       <div className="min-h-screen flex items-center justify-center px-2 py-4 sm:px-4 sm:py-8">
@@ -586,7 +589,6 @@ const LoginPage = () => {
                 </p>
               </div>
 
-              {/* Full Name */}
               <div className="w-full">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Full Name <span className="text-red-500">*</span>
@@ -605,7 +607,6 @@ const LoginPage = () => {
                 />
               </div>
 
-              {/* Khandan Searchable Dropdown */}
               <div className="w-full">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Khandan <span className="text-red-500">*</span>
@@ -613,13 +614,7 @@ const LoginPage = () => {
                 <Select
                   options={khandanOptions}
                   onChange={(option) =>
-                    handleKhandanChange(
-                      option,
-                      setForgotUsernameKhandanId,
-                      setForgotUsernameFatherId,
-                      null,
-                      "forgotUsername"
-                    )
+                    setForgotUsernameKhandanId(option ? option.value : "")
                   }
                   value={khandanOptions.find(
                     (opt) => opt.value === forgotUsernameKhandanId
@@ -630,28 +625,24 @@ const LoginPage = () => {
                 />
               </div>
 
-              {/* Father Dropdown */}
               <div className="w-full">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Father <span className="text-red-500">*</span>
+                  Father's Name <span className="text-red-500">*</span>
                 </label>
-                <select
-                  className="border border-zinc-300 rounded-lg w-full p-3 disabled:bg-gray-100"
-                  onChange={(e) => setForgotUsernameFatherId(e.target.value)}
-                  value={forgotUsernameFatherId}
-                  disabled={!forgotUsernameKhandanId}
+                <input
+                  className="border border-zinc-300 rounded-lg w-full p-3"
+                  type="text"
+                  onChange={(e) =>
+                    setForgotUsernameFatherName(
+                      capitalizeEachWord(e.target.value)
+                    )
+                  }
+                  value={forgotUsernameFatherName}
                   required
-                >
-                  <option value="">Select Father</option>
-                  {usersList.map((user) => (
-                    <option key={user._id} value={user.id}>
-                      {user.fullname} ({user.id})
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Enter your father's full name"
+                />
               </div>
 
-              {/* Date of Birth */}
               <div className="w-full">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Date of Birth <span className="text-red-500">*</span>
@@ -703,7 +694,6 @@ const LoginPage = () => {
 
             {state === "Register" ? (
               <>
-                {/* Full Name */}
                 <div className="w-full">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Full Name <span className="text-red-500">*</span>
@@ -711,30 +701,27 @@ const LoginPage = () => {
                   <input
                     className="border border-zinc-300 rounded-lg w-full p-3"
                     type="text"
-                    onChange={(e) =>
-                      setFullname(capitalizeEachWord(e.target.value))
-                    }
+                    onChange={handleFullnameChange}
                     value={fullname}
                     required
                     placeholder="Enter your full name"
                   />
+                  {/* NEW: Error message display */}
+                  {nameError && (
+                    <p className="text-red-500 text-xs mt-1">{nameError}</p>
+                  )}
                 </div>
-                {/* Khandan Searchable Dropdown */}
+
                 <div className="w-full">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Khandan <span className="text-red-500">*</span>
                   </label>
                   <Select
                     options={khandanOptions}
-                    onChange={(option) =>
-                      handleKhandanChange(
-                        option,
-                        setSelectedKhandanId,
-                        setFatherId,
-                        setIsEldest,
-                        "register"
-                      )
-                    }
+                    onChange={(option) => {
+                      const khandanId = option ? option.value : "";
+                      setSelectedKhandanId(khandanId);
+                    }}
                     value={khandanOptions.find(
                       (opt) => opt.value === selectedKhandanId
                     )}
@@ -743,54 +730,38 @@ const LoginPage = () => {
                     required
                   />
                 </div>
-                {/* Father ID with Eldest option */}
+
                 <div className="w-full">
-                  <div className="flex items-center gap-4 mb-1">
-                    <label className="text-sm font-medium text-gray-700">
-                      Father <span className="text-red-500">*</span>
-                    </label>
-                    {usersList.length === 0 && selectedKhandanId && (
-                      <label className="flex items-center gap-2 text-sm text-gray-600">
-                        <input
-                          type="checkbox"
-                          checked={isEldest}
-                          onChange={(e) => handleEldestChange(e.target.checked)}
-                          className="w-4 h-4"
-                        />
-                        <span>Eldest</span>
-                      </label>
-                    )}
-                  </div>
-                  <select
-                    className="border border-zinc-300 rounded-lg w-full p-3 disabled:bg-gray-100"
-                    onChange={(e) => setFatherId(e.target.value)}
-                    value={fatherId}
-                    disabled={isEldest || !selectedKhandanId}
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Father's Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    className="border border-zinc-300 rounded-lg w-full p-3"
+                    type="text"
+                    onChange={handleFatherNameChange}
+                    value={fatherName}
                     required
-                  >
-                    <option value="">Select Father</option>
-                    {usersList.map((user) => (
-                      <option key={user._id} value={user.id}>
-                        {user.fullname} ({user.id})
-                      </option>
-                    ))}
-                  </select>
-                  {!isEldest && selectedKhandanId && (
-                    <p className="mt-2 text-xs text-red-600">
-                      {usersList.length === 0
-                        ? "No users in this khandan. Check 'Eldest' if you are the first member."
-                        : "Register your father first if not in the list."}
+                    placeholder="Enter your father's full name"
+                  />
+                  {/* NEW: Error message display */}
+                  {fatherNameError && (
+                    <p className="text-red-500 text-xs mt-1">
+                      {fatherNameError}
                     </p>
                   )}
+
+                  <p className="mt-2 text-xs text-gray-500">
+                    Please enter his full name.
+                  </p>
                 </div>
-                {/* Gender and DOB - Side by side on larger screens */}
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="w-full">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Gender<span className="text-red-500">*</span>
                     </label>
                     <select
-                      className="border border-zinc-300 rounded-lg w-full p-3 text-sm sm:text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                      className="border border-zinc-300 rounded-lg w-full p-3"
                       onChange={(e) => setGender(e.target.value)}
                       value={gender}
                       required
@@ -803,51 +774,51 @@ const LoginPage = () => {
                   </div>
                   <div className="w-full">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Date of Birth
-                      <span className="text-red-500">*</span>
+                      Date of Birth <span className="text-red-500">*</span>
                     </label>
                     <input
-                      className="border border-zinc-300 rounded-lg w-full p-3 text-sm sm:text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                      className="border border-zinc-300 rounded-lg w-full p-3"
                       type="date"
-                      onChange={(e) => setDob(e.target.value)}
+                      onChange={handleDobChange}
                       value={dob}
                       required
                     />
+                    {/* NEW: Error message display */}
+                    {dobError && (
+                      <p className="text-red-500 text-xs mt-1">{dobError}</p>
+                    )}
                   </div>
                 </div>
-                {/* Contact Information */}
+
                 <div className="w-full">
-                  <h3 className="text-lg font-medium text-gray-800 mb-3">
+                  <h3 className="text-lg font-medium text-gray-800 my-2">
                     Contact Information
                   </h3>
-                  {/* Email */}
                   <div className="w-full mb-4">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Email
+                      Email{" "}
                       <span className="text-sm text-gray-500 ml-2">
-                        (LoginId are sent on it.)
+                        (Login credentials are sent here.)
                       </span>
                     </label>
                     <input
-                      className="border border-zinc-300 rounded-lg w-full p-3 text-sm sm:text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                      className="border border-zinc-300 rounded-lg w-full p-3"
                       type="email"
                       onChange={(e) => setEmail(e.target.value)}
                       value={email}
                       placeholder="Enter your email address"
                     />
                   </div>
-                  {/* Mobile Number */}
                   <div className="w-full mb-4">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Mobile Number
                     </label>
                     <div className="flex gap-2">
                       <select
-                        className="border border-zinc-300 rounded-lg p-3 text-sm sm:text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                        className="border border-zinc-300 rounded-lg p-3"
                         onChange={(e) =>
                           setMobile((prev) => ({
                             ...prev,
-
                             code: e.target.value,
                           }))
                         }
@@ -856,194 +827,185 @@ const LoginPage = () => {
                       >
                         <option value="+91">+91</option>
                         <option value="+1">+1</option>
-                        <option value="+44">+44</option>
-                        <option value="+61">+61</option>
-                        <option value="+971">+971</option>
                       </select>
                       <input
-                        className="border border-zinc-300 rounded-lg flex-1 p-3 text-sm sm:text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                        className="border border-zinc-300 rounded-lg flex-1 p-3"
                         type="tel"
                         onChange={(e) =>
                           setMobile((prev) => ({
                             ...prev,
-
                             number: e.target.value,
                           }))
                         }
                         value={mobile.number}
-                        placeholder="Enter mobile number"
+                        placeholder="Enter 10-digit mobile number"
                         pattern="[0-9]{10}"
                       />
                     </div>
                   </div>
                 </div>
-                {/* Current Location */}
+
                 <div className="w-full">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Current Location <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    className="border border-zinc-300 rounded-lg w-full p-3 text-sm sm:text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                    onChange={(e) => handleLocationChange(e.target.value)}
-                    value={address.currlocation}
-                    required
-                  >
-                    <option value="">Select Current Location</option>
-                    <option value="in_manpur">In Manpur</option>
-                    <option value="in_gaya_outside_manpur">
-                      In Gaya outside Manpur
-                    </option>
-                    <option value="in_bihar_outside_gaya">
-                      In Bihar outside Gaya
-                    </option>
-                    <option value="in_india_outside_bihar">
-                      In India outside Bihar
-                    </option>
-                    <option value="outside_india">Outside India</option>
-                  </select>
-                </div>
-                {/* Address Fields - Grid layout for better organization */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="w-full">
+                  <h3 className="text-lg font-medium text-gray-800 my-2">
+                    Address Information
+                  </h3>
+                  <div className="w-full mb-4">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Country <span className="text-red-500">*</span>
+                      Current Location <span className="text-red-500">*</span>
                     </label>
-                    <input
-                      className="border border-zinc-300 rounded-lg w-full p-3 text-sm sm:text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                      type="text"
-                      onChange={(e) =>
-                        setAddress((prev) => ({
-                          ...prev,
-
-                          country: capitalizeEachWord(e.target.value),
-                        }))
-                      }
-                      value={address.country}
+                    <select
+                      className="border border-zinc-300 rounded-lg w-full p-3"
+                      onChange={(e) => handleLocationChange(e.target.value)}
+                      value={address.currlocation}
                       required
-                      placeholder="Country"
-                    />
+                    >
+                      <option value="">Select Current Location</option>
+                      <option value="in_manpur">In Manpur</option>
+                      <option value="in_gaya_outside_manpur">
+                        In Gaya outside Manpur
+                      </option>
+                      <option value="in_bihar_outside_gaya">
+                        In Bihar outside Gaya
+                      </option>
+                      <option value="in_india_outside_bihar">
+                        In India outside Bihar
+                      </option>
+                      <option value="outside_india">Outside India</option>
+                    </select>
                   </div>
-                  <div className="w-full">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="w-full">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Country <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        className="border border-zinc-300 rounded-lg w-full p-3"
+                        type="text"
+                        onChange={(e) =>
+                          setAddress((prev) => ({
+                            ...prev,
+                            country: capitalizeEachWord(e.target.value),
+                          }))
+                        }
+                        value={address.country}
+                        required
+                        placeholder="Country"
+                      />
+                    </div>
+                    <div className="w-full">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        State <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        className="border border-zinc-300 rounded-lg w-full p-3"
+                        type="text"
+                        onChange={(e) =>
+                          setAddress((prev) => ({
+                            ...prev,
+                            state: capitalizeEachWord(e.target.value),
+                          }))
+                        }
+                        value={address.state}
+                        required
+                        placeholder="State"
+                      />
+                    </div>
+                    <div className="w-full">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        District <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        className="border border-zinc-300 rounded-lg w-full p-3"
+                        type="text"
+                        onChange={(e) =>
+                          setAddress((prev) => ({
+                            ...prev,
+                            district: capitalizeEachWord(e.target.value),
+                          }))
+                        }
+                        value={address.district}
+                        required
+                        placeholder="District"
+                      />
+                    </div>
+                    <div className="w-full">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        City <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        className="border border-zinc-300 rounded-lg w-full p-3"
+                        type="text"
+                        onChange={(e) =>
+                          setAddress((prev) => ({
+                            ...prev,
+                            city: capitalizeEachWord(e.target.value),
+                          }))
+                        }
+                        value={address.city}
+                        required
+                        placeholder="City"
+                      />
+                    </div>
+                    <div className="w-full">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Post Office <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        className="border border-zinc-300 rounded-lg w-full p-3"
+                        type="text"
+                        onChange={(e) =>
+                          setAddress((prev) => ({
+                            ...prev,
+                            postoffice: capitalizeEachWord(e.target.value),
+                          }))
+                        }
+                        value={address.postoffice}
+                        required
+                        placeholder="Post Office"
+                      />
+                    </div>
+                    <div className="w-full">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        PIN Code <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        className="border border-zinc-300 rounded-lg w-full p-3"
+                        type="text"
+                        onChange={(e) =>
+                          setAddress((prev) => ({
+                            ...prev,
+                            pin: e.target.value,
+                          }))
+                        }
+                        value={address.pin}
+                        required
+                        placeholder="PIN Code"
+                        pattern="[0-9]{6}"
+                      />
+                    </div>
+                  </div>
+                  <div className="w-full mt-4">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      State
-                      <span className="text-red-500">*</span>
+                      Street Address <span className="text-red-500">*</span>
                     </label>
                     <input
-                      className="border border-zinc-300 rounded-lg w-full p-3 text-sm sm:text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                      className="border border-zinc-300 rounded-lg w-full p-3"
                       type="text"
                       onChange={(e) =>
                         setAddress((prev) => ({
                           ...prev,
-
-                          state: capitalizeEachWord(e.target.value),
+                          street: capitalizeEachWord(e.target.value),
                         }))
                       }
-                      value={address.state}
+                      value={address.street}
                       required
-                      placeholder="State"
+                      placeholder="Street Address"
                     />
                   </div>
-                  <div className="w-full">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      District
-                      <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      className="border border-zinc-300 rounded-lg w-full p-3 text-sm sm:text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                      type="text"
-                      onChange={(e) =>
-                        setAddress((prev) => ({
-                          ...prev,
-
-                          district: capitalizeEachWord(e.target.value),
-                        }))
-                      }
-                      value={address.district}
-                      required
-                      placeholder="District"
-                    />
-                  </div>
-                  <div className="w-full">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      City
-                      <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      className="border border-zinc-300 rounded-lg w-full p-3 text-sm sm:text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                      type="text"
-                      onChange={(e) =>
-                        setAddress((prev) => ({
-                          ...prev,
-
-                          city: capitalizeEachWord(e.target.value),
-                        }))
-                      }
-                      value={address.city}
-                      required
-                      placeholder="City"
-                    />
-                  </div>
-                  <div className="w-full">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Post Office
-                    </label>
-                    <input
-                      className="border border-zinc-300 rounded-lg w-full p-3 text-sm sm:text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                      type="text"
-                      onChange={(e) =>
-                        setAddress((prev) => ({
-                          ...prev,
-
-                          postoffice: capitalizeEachWord(e.target.value),
-                        }))
-                      }
-                      value={address.postoffice}
-                      placeholder="Post Office"
-                    />
-                  </div>
-                  <div className="w-full">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      PIN Code
-                    </label>
-                    <input
-                      className="border border-zinc-300 rounded-lg w-full p-3 text-sm sm:text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                      type="text"
-                      onChange={(e) =>
-                        setAddress((prev) => ({
-                          ...prev,
-
-                          pin: e.target.value,
-                        }))
-                      }
-                      value={address.pin}
-                      placeholder="PIN Code"
-                      pattern="[0-9]{6}"
-                    />
-                  </div>
-                </div>
-                {/* Street Address - Full width */}
-                <div className="w-full">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Street Address
-                  </label>
-                  <input
-                    className="border border-zinc-300 rounded-lg w-full p-3 text-sm sm:text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                    type="text"
-                    onChange={(e) =>
-                      setAddress((prev) => ({
-                        ...prev,
-
-                        street: capitalizeEachWord(e.target.value),
-                      }))
-                    }
-                    value={address.street}
-                    placeholder="Street Address"
-                  />
                 </div>
               </>
             ) : (
               <>
-                {/* Login Form */}
                 <div className="w-full">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Username <span className="text-red-500">*</span>
@@ -1071,7 +1033,6 @@ const LoginPage = () => {
                   />
                 </div>
 
-                {/* Forgot Links */}
                 <div className="flex justify-between text-right">
                   <span
                     onClick={() => setState("ForgotUsername")}
@@ -1091,7 +1052,6 @@ const LoginPage = () => {
 
             {renderButton(state === "Register" ? "Register" : "Login")}
 
-            {/* Toggle between Login and Register */}
             <div className="text-center text-sm">
               {state === "Register" ? (
                 <>

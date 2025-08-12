@@ -5,7 +5,8 @@ import { AppContext } from "../context/AppContext";
 
 const Navbar = () => {
   const navigate = useNavigate();
-  const { state, setState, token, utoken, setUToken } = useContext(AppContext);
+  const { state, setState, token, utoken, setUToken, userData } =
+    useContext(AppContext);
 
   const [showMenu, setShowMenu] = useState(false);
   // const [token, setToken] = useState(true);
@@ -56,13 +57,17 @@ const Navbar = () => {
         <div>
           {token || utoken ? (
             <div className="flex items-center gap-2 cursor-pointer group relative">
-              <img className="w-8 rounded-full" src={assets.profile} alt="" />
+              <img
+                className="w-8 h-8 rounded-full border-2 border-purple-200"
+                src={userData.image}
+                alt=""
+              />
               <img className="w-2.5" src={assets.dropdown_icon} alt="" />
               <div className="absolute top-0 right-0 pt-14 text-base font-medium text-gray-600 z-20 hidden group-hover:block">
                 <div className="min-w-48 bg-stone-100 rounded flex flex-col gap-4 p-4">
                   {utoken && (
                     <p
-                      onClick={() => navigate("/user-portal")}
+                      onClick={() => navigate("/user-portal/profile")}
                       className="hover:text-black cursor-pointer"
                     >
                       My Portal

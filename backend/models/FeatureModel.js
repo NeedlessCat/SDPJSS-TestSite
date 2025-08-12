@@ -7,6 +7,11 @@ const featureSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    access: {
+      type: String,
+      enum: ["admin", "user"],
+      required: true,
+    },
     link: {
       type: String,
       required: true,

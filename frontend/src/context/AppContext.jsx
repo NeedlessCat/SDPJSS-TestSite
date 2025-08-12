@@ -175,6 +175,32 @@ const AppContextProvider = (props) => {
     }
   };
 
+  const [publicFeatures, setPublicFeatures] = useState([]);
+
+  // --- NEW FUNCTION TO LOAD PUBLIC FEATURES ---
+  const loadPublicFeatures = async () => {
+    try {
+      // Use the new public endpoint
+      const response = await axios.get(`${backendUrl}/api/c/public-features`);
+      if (response.data.success) {
+        const allowedLinks = [
+          "/jobs",
+          "/staff-requirements",
+          "/advertisements",
+        ];
+
+        // Filter the data using the .includes() method
+        const filterData = response.data.data.filter((feature) =>
+          allowedLinks.includes(feature.link)
+        );
+        setPublicFeatures(filterData);
+      }
+    } catch (error) {
+      console.error("Failed to load public features:", error);
+      // Don't toast here, as it's a background task for public users
+    }
+  };
+
   const value = {
     backendUrl,
     state,
@@ -201,12 +227,14 @@ const AppContextProvider = (props) => {
     setDonations,
     donationsLoading,
     loadUserDonations,
+    publicFeatures,
   };
 
   useEffect(() => {
     if (utoken) {
       loadUserData();
       loadUserJobs();
+      loadPublicFeatures();
     } else {
       setUserData(false);
       setJobs(false);

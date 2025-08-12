@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useContext, useMemo } from "react";
 import {
   Search,
   Plus,
@@ -11,18 +11,396 @@ import {
   CreditCard,
   DollarSign,
   Clock,
-  Trash2, // <-- Import Trash icon
+  Trash2,
   Download,
   XCircle,
   Printer,
   ChevronLeft,
   ChevronRight,
+  Scissors,
 } from "lucide-react";
 import axios from "axios";
-import { useContext } from "react";
 import { AdminContext } from "../context/AdminContext";
 import { toast } from "react-toastify";
 import html2pdf from "html2pdf.js";
+
+// Helper function to convert number to Indian currency words
+const toWords = (num) => {
+  const ones = [
+    "",
+    "One",
+    "Two",
+    "Three",
+    "Four",
+    "Five",
+    "Six",
+    "Seven",
+    "Eight",
+    "Nine",
+    "Ten",
+    "Eleven",
+    "Twelve",
+    "Thirteen",
+    "Fourteen",
+    "Fifteen",
+    "Sixteen",
+    "Seventeen",
+    "Eighteen",
+    "Nineteen",
+  ];
+  const tens = [
+    "",
+    "",
+    "Twenty",
+    "Thirty",
+    "Forty",
+    "Fifty",
+    "Sixty",
+    "Seventy",
+    "Eighty",
+    "Ninety",
+  ];
+  const numToWords = (n) => {
+    let word = "";
+    if (n === 0) return word;
+    if (n < 20) {
+      word = ones[n];
+    } else {
+      word =
+        tens[Math.floor(n / 10)] + (n % 10 !== 0 ? " " + ones[n % 10] : "");
+    }
+    return word;
+  };
+  const number = Math.round(num);
+  if (number === 0) return "Zero Rupees Only";
+  if (number > 999999999) return "Number is too large";
+  let result = "";
+  const crore = Math.floor(number / 10000000);
+  const lakh = Math.floor((number % 10000000) / 100000);
+  const thousand = Math.floor((number % 100000) / 1000);
+  const hundred = Math.floor((number % 1000) / 100);
+  const rest = number % 100;
+  if (crore) result += numToWords(crore) + " Crore ";
+  if (lakh) result += numToWords(lakh) + " Lakh ";
+  if (thousand) result += numToWords(thousand) + " Thousand ";
+  if (hundred) result += numToWords(hundred) + " Hundred ";
+  if (rest) result += numToWords(rest);
+  return result.trim().replace(/\s+/g, " ") + " Rupees Only";
+};
+
+const ReceiptTemplate = ({ donationData, userData, adminName }) => {
+  if (!donationData || !userData) return null;
+
+  const finalTotalAmount = donationData.amount;
+
+  const headerCellStyle = {
+    padding: "10px",
+    textAlign: "left",
+    borderBottom: "1px solid #eee",
+    backgroundColor: "#f2f2f2",
+    fontWeight: 600,
+  };
+  const bodyCellStyle = {
+    padding: "10px",
+    textAlign: "left",
+    borderBottom: "1px solid #eee",
+  };
+  const bodyCellRightAlign = { ...bodyCellStyle, textAlign: "right" };
+
+  return (
+    <div
+      className="bill-container"
+      style={{
+        maxWidth: "800px",
+        margin: "auto",
+        border: "1px solid #ccc",
+        padding: "25px",
+        fontFamily: "'Segoe UI', sans-serif",
+        color: "#333",
+        position: "relative",
+      }}
+    >
+      <div
+        className="header"
+        style={{
+          textAlign: "center",
+          borderBottom: "2px solid #16a34a",
+          paddingBottom: "15px",
+          marginBottom: "25px",
+        }}
+      >
+        <div
+          style={{
+            fontSize: "28px",
+            fontWeight: "bold",
+            color: "#16a34a",
+            marginBottom: "5px",
+          }}
+        >
+          SDPJSS
+        </div>
+        <div style={{ fontSize: "16px", color: "#666", marginBottom: "10px" }}>
+          Shree Durga Patwaye Jati Sudhar Samiti
+        </div>
+        <div>Durga Asthan, Manpur, Gaya, Bihar, India - 823003</div>
+      </div>
+
+      <div
+        style={{
+          fontSize: "22px",
+          fontWeight: 600,
+          textAlign: "center",
+          margin: "20px 0",
+        }}
+      >
+        DONATION RECEIPT
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          marginBottom: "20px",
+          fontSize: "14px",
+        }}
+      >
+        <div>
+          <strong>Receipt No:</strong> {donationData.receiptId}
+        </div>
+        <div>
+          <strong>Date:</strong>{" "}
+          {new Date(donationData.createdAt).toLocaleDateString("en-IN")}
+        </div>
+      </div>
+
+      <div
+        style={{
+          backgroundColor: "#f9f9f9",
+          padding: "15px",
+          border: "1px dashed #ddd",
+          borderRadius: "8px",
+          marginBottom: "20px",
+        }}
+      >
+        <h3
+          style={{
+            marginTop: 0,
+            color: "#16a34a",
+            borderBottom: "1px solid #eee",
+            paddingBottom: "5px",
+          }}
+        >
+          Donor Details
+        </h3>
+        <p style={{ fontSize: "14px", margin: "5px 0" }}>
+          <strong>Name:</strong> {userData.fullname}
+        </p>
+        <p style={{ fontSize: "14px", margin: "5px 0" }}>
+          <strong>Khandan:</strong> {userData.khandanName}
+        </p>
+        <p style={{ fontSize: "14px", margin: "5px 0" }}>
+          <strong>Mobile:</strong> {userData.contact.mobileno?.code}{" "}
+          {userData.contact.mobileno?.number}
+        </p>
+        <p style={{ fontSize: "14px", margin: "5px 0" }}>
+          <strong>Address:</strong>{" "}
+          {`${userData.address.street}, ${userData.address.city}, ${userData.address.state} - ${userData.address.pin}`}
+        </p>
+      </div>
+
+      <table
+        style={{
+          width: "100%",
+          borderCollapse: "collapse",
+          marginBottom: "20px",
+        }}
+      >
+        <thead>
+          <tr>
+            <th style={headerCellStyle}>Item</th>
+            <th style={{ ...headerCellStyle, textAlign: "right" }}>Quantity</th>
+            <th style={{ ...headerCellStyle, textAlign: "right" }}>
+              Amount (₹)
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {donationData.list.map((item, index) => (
+            <tr key={index}>
+              <td style={bodyCellStyle}>{item.category}</td>
+              <td style={bodyCellRightAlign}>
+                {item.number.toLocaleString("en-IN")}
+              </td>
+              <td style={bodyCellRightAlign}>
+                ₹{item.amount.toLocaleString("en-IN")}
+              </td>
+            </tr>
+          ))}
+          {donationData.courierCharge > 0 && (
+            <tr>
+              <td
+                colSpan={2}
+                style={{
+                  ...bodyCellStyle,
+                  borderTop: "2px solid #ddd",
+                  fontWeight: "bold",
+                }}
+              >
+                Courier Charges
+              </td>
+              <td
+                style={{
+                  ...bodyCellRightAlign,
+                  borderTop: "2px solid #ddd",
+                  fontWeight: "bold",
+                }}
+              >
+                ₹{donationData.courierCharge.toLocaleString("en-IN")}
+              </td>
+            </tr>
+          )}
+          <tr
+            style={{
+              fontWeight: "bold",
+              fontSize: "16px",
+              backgroundColor: "#f2f2f2",
+            }}
+          >
+            <td
+              colSpan={2}
+              style={{
+                padding: "12px 10px",
+                textAlign: "left",
+                borderTop: "2px solid #ddd",
+              }}
+            >
+              TOTAL AMOUNT
+            </td>
+            <td
+              style={{
+                ...bodyCellRightAlign,
+                padding: "12px 10px",
+                borderTop: "2px solid #ddd",
+              }}
+            >
+              ₹{finalTotalAmount.toLocaleString("en-IN")}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div
+        style={{
+          padding: "12px",
+          backgroundColor: "#f9f9f9",
+          borderLeft: "4px solid #16a34a",
+          marginTop: "20px",
+          fontWeight: "bold",
+        }}
+      >
+        Amount in Words: {toWords(finalTotalAmount)}
+      </div>
+
+      <div
+        style={{
+          textAlign: "center",
+          marginTop: "30px",
+          paddingTop: "15px",
+          borderTop: "1px solid #ccc",
+          fontSize: "12px",
+          color: "#777",
+        }}
+      >
+        <p>
+          Thank you for your generous contribution. This is a computer-generated
+          receipt.
+        </p>
+        <p style={{ marginTop: "10px", fontStyle: "italic" }}>
+          Generated by: <strong>{adminName || "Admin"}</strong>
+        </p>
+      </div>
+    </div>
+  );
+};
+
+const ReceiptModal = ({ data, isGroup, onClose, adminName }) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const receiptRef = useRef(null);
+
+  const currentReceipt = isGroup ? data[currentIndex] : data;
+  if (!currentReceipt) return null;
+
+  const handleDownloadClick = (receiptNode, filename) => {
+    html2pdf()
+      .from(receiptNode)
+      .set({
+        margin: 0.5,
+        filename,
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: "in", format: "a4", orientation: "portrait" },
+      })
+      .save();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col">
+        <div className="p-4 border-b flex justify-between items-center">
+          <h2 className="text-xl font-bold text-gray-800">Receipt Preview</h2>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() =>
+                handleDownloadClick(
+                  receiptRef.current,
+                  `Receipt-${currentReceipt.donationData.receiptId}.pdf`
+                )
+              }
+              className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700"
+            >
+              <Download size={18} /> Download
+            </button>
+            <button
+              onClick={onClose}
+              className="text-gray-500 hover:text-red-600"
+            >
+              <XCircle size={24} />
+            </button>
+          </div>
+        </div>
+        <div className="p-6 overflow-y-auto relative">
+          {isGroup && (
+            <>
+              <button
+                onClick={() => setCurrentIndex((p) => Math.max(0, p - 1))}
+                disabled={currentIndex === 0}
+                className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/70 rounded-full p-1 shadow-md hover:bg-gray-100 disabled:opacity-30 z-10"
+              >
+                <ChevronLeft size={24} />
+              </button>
+              <button
+                onClick={() =>
+                  setCurrentIndex((p) => Math.min(data.length - 1, p + 1))
+                }
+                disabled={currentIndex === data.length - 1}
+                className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/70 rounded-full p-1 shadow-md hover:bg-gray-100 disabled:opacity-30 z-10"
+              >
+                <ChevronRight size={24} />
+              </button>
+            </>
+          )}
+          <div ref={receiptRef}>
+            <ReceiptTemplate
+              donationData={currentReceipt.donationData}
+              userData={currentReceipt.userData}
+              adminName={adminName}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const Receipt = () => {
   const {
@@ -39,12 +417,10 @@ const Receipt = () => {
   const [selectedCategoryDetails, setSelectedCategoryDetails] = useState(null);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
-
   const [donationType, setDonationType] = useState("individual");
   const [groupDonations, setGroupDonations] = useState([]);
   const [totalGroupAmount, setTotalGroupAmount] = useState(0);
-  const [isPayingGroup, setIsPayingGroup] = useState(false); // <-- Loading state for group payment
-
+  const [isPayingGroup, setIsPayingGroup] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [userSearch, setUserSearch] = useState("");
   const [filteredUsers, setFilteredUsers] = useState([]);
@@ -54,17 +430,16 @@ const Receipt = () => {
   const [courierAddress, setCourierAddress] = useState("");
   const [donations, setDonations] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState("");
-  const [quantity, setQuantity] = useState("");
+  const [quantity, setQuantity] = useState(1);
+  const [dynamicAmount, setDynamicAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("");
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState([]);
   const [khandans, setKhandans] = useState([]);
   const [courierCharges, setCourierCharges] = useState([]);
   const [userPreviousDonations, setUserPreviousDonations] = useState([]);
-
   const [isEldest, setIsEldest] = useState(false);
   const [usersInSelectedKhandan, setUsersInSelectedKhandan] = useState([]);
-
   const [remarks, setRemarks] = useState("");
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [newUser, setNewUser] = useState({
@@ -98,341 +473,18 @@ const Receipt = () => {
   const handleCloseModal = () => {
     setShowReceiptModal(false);
     setReceiptData(null);
-    resetForm(); // Now we reset the form *after* the user closes the receipt.
-  };
-
-  // Place this entire block of code inside Receipt.js, before `const Receipt = () => { ... }`
-
-  const ReceiptTemplate = ({ donationData, userData, adminName }) => {
-    if (!donationData || !userData) return null;
-
-    const finalTotalAmount = donationData.amount; // The total amount should already include courier charges from the backend.
-
-    const headerCellStyle = {
-      padding: "10px",
-      textAlign: "left",
-      borderBottom: "1px solid #eee",
-      backgroundColor: "#f2f2f2",
-      fontWeight: 600,
-    };
-    const bodyCellStyle = {
-      padding: "10px",
-      textAlign: "left",
-      borderBottom: "1px solid #eee",
-    };
-    const bodyCellRightAlign = { ...bodyCellStyle, textAlign: "right" };
-
-    return (
-      <div
-        className="bill-container"
-        style={{
-          maxWidth: "800px",
-          margin: "auto",
-          border: "1px solid #ccc",
-          padding: "25px",
-          fontFamily: "'Segoe UI', sans-serif",
-          color: "#333",
-          position: "relative",
-        }}
-      >
-        {/* You can add a watermark here if needed */}
-        <div
-          className="header"
-          style={{
-            textAlign: "center",
-            borderBottom: "2px solid #16a34a",
-            paddingBottom: "15px",
-            marginBottom: "25px",
-          }}
-        >
-          <div
-            style={{
-              fontSize: "28px",
-              fontWeight: "bold",
-              color: "#16a34a",
-              marginBottom: "5px",
-            }}
-          >
-            SDPJSS
-          </div>
-          <div
-            style={{ fontSize: "16px", color: "#666", marginBottom: "10px" }}
-          >
-            Shree Durga Patwaye Jati Sudhar Samiti
-          </div>
-          <div>Durga Asthan, Manpur, Gaya, Bihar, India - 823003</div>
-        </div>
-
-        <div
-          style={{
-            fontSize: "22px",
-            fontWeight: 600,
-            textAlign: "center",
-            margin: "20px 0",
-          }}
-        >
-          DONATION RECEIPT
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            marginBottom: "20px",
-            fontSize: "14px",
-          }}
-        >
-          <div>
-            <strong>Receipt No:</strong> {donationData.receiptId}
-          </div>
-          <div>
-            <strong>Date:</strong>{" "}
-            {new Date(donationData.createdAt).toLocaleDateString("en-IN")}
-          </div>
-        </div>
-
-        <div
-          style={{
-            backgroundColor: "#f9f9f9",
-            padding: "15px",
-            border: "1px dashed #ddd",
-            borderRadius: "8px",
-            marginBottom: "20px",
-          }}
-        >
-          <h3
-            style={{
-              marginTop: 0,
-              color: "#16a34a",
-              borderBottom: "1px solid #eee",
-              paddingBottom: "5px",
-            }}
-          >
-            Donor Details
-          </h3>
-          <p style={{ fontSize: "14px", margin: "5px 0" }}>
-            <strong>Name:</strong> {userData.fullname}
-          </p>
-          <p style={{ fontSize: "14px", margin: "5px 0" }}>
-            <strong>Khandan:</strong> {userData.khandanName}
-          </p>
-          <p style={{ fontSize: "14px", margin: "5px 0" }}>
-            <strong>Mobile:</strong> {userData.contact.mobileno?.code}{" "}
-            {userData.contact.mobileno?.number}
-          </p>
-          <p style={{ fontSize: "14px", margin: "5px 0" }}>
-            <strong>Address:</strong>{" "}
-            {`${userData.address.street}, ${userData.address.city}, ${userData.address.state} - ${userData.address.pin}`}
-          </p>
-        </div>
-
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            marginBottom: "20px",
-          }}
-        >
-          <thead>
-            <tr>
-              <th style={headerCellStyle}>Item</th>
-              <th style={{ ...headerCellStyle, textAlign: "right" }}>
-                Quantity
-              </th>
-              <th style={{ ...headerCellStyle, textAlign: "right" }}>
-                Amount (₹)
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {donationData.list.map((item, index) => (
-              <tr key={index}>
-                <td style={bodyCellStyle}>{item.category}</td>
-                <td style={bodyCellRightAlign}>
-                  {item.number.toLocaleString("en-IN")}
-                </td>
-                <td style={bodyCellRightAlign}>
-                  ₹{item.amount.toLocaleString("en-IN")}
-                </td>
-              </tr>
-            ))}
-            {donationData.courierCharge > 0 && (
-              <tr>
-                <td
-                  colSpan={2}
-                  style={{
-                    ...bodyCellStyle,
-                    borderTop: "2px solid #ddd",
-                    fontWeight: "bold",
-                  }}
-                >
-                  Courier Charges
-                </td>
-                <td
-                  style={{
-                    ...bodyCellRightAlign,
-                    borderTop: "2px solid #ddd",
-                    fontWeight: "bold",
-                  }}
-                >
-                  ₹{donationData.courierCharge.toLocaleString("en-IN")}
-                </td>
-              </tr>
-            )}
-            <tr
-              style={{
-                fontWeight: "bold",
-                fontSize: "16px",
-                backgroundColor: "#f2f2f2",
-              }}
-            >
-              <td
-                colSpan={2}
-                style={{
-                  padding: "12px 10px",
-                  textAlign: "left",
-                  borderTop: "2px solid #ddd",
-                }}
-              >
-                TOTAL AMOUNT
-              </td>
-              <td
-                style={{
-                  ...bodyCellRightAlign,
-                  padding: "12px 10px",
-                  borderTop: "2px solid #ddd",
-                }}
-              >
-                ₹{finalTotalAmount.toLocaleString("en-IN")}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div
-          style={{
-            padding: "12px",
-            backgroundColor: "#f9f9f9",
-            borderLeft: "4px solid #16a34a",
-            marginTop: "20px",
-            fontWeight: "bold",
-          }}
-        >
-          Amount in Words: {toWords(finalTotalAmount)}
-        </div>
-
-        {/* ... (rest of the template for payment method, PAID status, footer, etc.) ... */}
-        <div
-          style={{
-            textAlign: "center",
-            marginTop: "30px",
-            paddingTop: "15px",
-            borderTop: "1px solid #ccc",
-            fontSize: "12px",
-            color: "#777",
-          }}
-        >
-          <p>
-            Thank you for your generous contribution. This is a
-            computer-generated receipt.
-          </p>
-          <p style={{ marginTop: "10px", fontStyle: "italic" }}>
-            Generated by: <strong>{adminName || "Admin"}</strong>
-          </p>
-        </div>
-      </div>
-    );
-  };
-
-  const ReceiptModal = ({ data, isGroup, onClose, adminName }) => {
-    const [currentIndex, setCurrentIndex] = useState(0);
-    const receiptRef = useRef(null);
-
-    const currentReceipt = isGroup ? data[currentIndex] : data;
-    if (!currentReceipt) return null;
-
-    const handleDownloadClick = (receiptNode, filename) => {
-      html2pdf()
-        .from(receiptNode)
-        .set({
-          margin: 0.5,
-          filename,
-          image: { type: "jpeg", quality: 0.98 },
-          html2canvas: { scale: 2 },
-          jsPDF: { unit: "in", format: "a4", orientation: "portrait" },
-        })
-        .save();
-    };
-
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4">
-        <div className="bg-white rounded-lg shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col">
-          <div className="p-4 border-b flex justify-between items-center">
-            <h2 className="text-xl font-bold text-gray-800">Receipt Preview</h2>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() =>
-                  handleDownloadClick(
-                    receiptRef.current,
-                    `Receipt-${currentReceipt.donationData.receiptId}.pdf`
-                  )
-                }
-                className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700"
-              >
-                <Download size={18} /> Download
-              </button>
-              <button
-                onClick={onClose}
-                className="text-gray-500 hover:text-red-600"
-              >
-                <XCircle size={24} />
-              </button>
-            </div>
-          </div>
-          <div className="p-6 overflow-y-auto relative">
-            {isGroup && (
-              <>
-                <button
-                  onClick={() => setCurrentIndex((p) => Math.max(0, p - 1))}
-                  disabled={currentIndex === 0}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/70 rounded-full p-1 shadow-md hover:bg-gray-100 disabled:opacity-30 z-10"
-                >
-                  <ChevronLeft size={24} />
-                </button>
-                <button
-                  onClick={() =>
-                    setCurrentIndex((p) => Math.min(data.length - 1, p + 1))
-                  }
-                  disabled={currentIndex === data.length - 1}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/70 rounded-full p-1 shadow-md hover:bg-gray-100 disabled:opacity-30 z-10"
-                >
-                  <ChevronRight size={24} />
-                </button>
-              </>
-            )}
-            <div ref={receiptRef}>
-              <ReceiptTemplate
-                donationData={currentReceipt.donationData}
-                userData={currentReceipt.userData}
-                adminName={adminName}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    resetForm();
   };
 
   const userSearchRef = useRef(null);
   const paymentMethods = ["Cash", "Online"];
   const genderOptions = ["male", "female", "other"];
 
-  // --- Auto-select "Cash" for Group Donations ---
   useEffect(() => {
     if (donationType === "group") {
       setPaymentMethod("Cash");
     } else {
-      setPaymentMethod(""); // Reset for individual mode
+      setPaymentMethod("");
     }
   }, [donationType]);
 
@@ -537,75 +589,6 @@ const Receipt = () => {
     }
   };
 
-  const convertAmountToWords = (amount) => {
-    const ones = [
-      "",
-      "One",
-      "Two",
-      "Three",
-      "Four",
-      "Five",
-      "Six",
-      "Seven",
-      "Eight",
-      "Nine",
-    ];
-    const teens = [
-      "Ten",
-      "Eleven",
-      "Twelve",
-      "Thirteen",
-      "Fourteen",
-      "Fifteen",
-      "Sixteen",
-      "Seventeen",
-      "Eighteen",
-      "Nineteen",
-    ];
-    const tens = [
-      "",
-      "",
-      "Twenty",
-      "Thirty",
-      "Forty",
-      "Fifty",
-      "Sixty",
-      "Seventy",
-      "Eighty",
-      "Ninety",
-    ];
-    const numToWords = (num) => {
-      if (num === 0) return "";
-      if (num < 10) return ones[num];
-      if (num < 20) return teens[num - 10];
-      const digit = num % 10;
-      return `${tens[Math.floor(num / 10)]} ${ones[digit]}`.trim();
-    };
-    if (amount === 0) return "Zero Rupees Only";
-    let words = "";
-    let num = Math.floor(amount);
-    if (num >= 10000000) {
-      words += `${numToWords(Math.floor(num / 10000000))} Crore `;
-      num %= 10000000;
-    }
-    if (num >= 100000) {
-      words += `${numToWords(Math.floor(num / 100000))} Lakh `;
-      num %= 100000;
-    }
-    if (num >= 1000) {
-      words += `${numToWords(Math.floor(num / 1000))} Thousand `;
-      num %= 1000;
-    }
-    if (num >= 100) {
-      words += `${numToWords(Math.floor(num / 100))} Hundred `;
-      num %= 100;
-    }
-    if (num > 0) {
-      words += numToWords(num);
-    }
-    return `${words.trim()} Rupees Only`;
-  };
-
   const handleEldestChangeForNewUser = (checked) => {
     setIsEldest(checked);
     setNewUser((prev) => ({
@@ -627,6 +610,7 @@ const Receipt = () => {
       console.error("Error fetching courier charges:", error);
     }
   };
+
   useEffect(() => {
     const fetchData = async () => {
       if (aToken) {
@@ -649,6 +633,7 @@ const Receipt = () => {
     };
     fetchData();
   }, [aToken]);
+
   const loadRazorpayScript = () =>
     new Promise((resolve) => {
       const script = document.createElement("script");
@@ -657,6 +642,7 @@ const Receipt = () => {
       script.onerror = () => resolve(false);
       document.body.appendChild(script);
     });
+
   const fetchCategories = async () => {
     try {
       const response = await axios.get(backendUrl + "/api/admin/categories", {
@@ -669,6 +655,7 @@ const Receipt = () => {
       console.error("Error fetching categories:", error);
     }
   };
+
   const getCourierChargeForUser = (user) => {
     if (!user?.address?.currlocation) return 0;
     const locationToCourierRegionMap = {
@@ -684,6 +671,7 @@ const Receipt = () => {
     );
     return courierCharge ? courierCharge.amount : 0;
   };
+
   const loadDonations = async () => {
     try {
       await getDonationList();
@@ -691,16 +679,19 @@ const Receipt = () => {
       console.error("Error loading donations:", error);
     }
   };
+
   const getKhandanName = (khandanId) => {
     const khandan = khandans.find((k) => k._id === khandanId._id);
     return khandan ? khandan.name : "Unknown Khandan";
   };
+
   const formatKhandanOption = (khandan) =>
     `${khandan.name}${
       khandan.address.landmark ? `, ${khandan.address.landmark}` : ""
     }${khandan.address.street ? `, ${khandan.address.street}` : ""} (${
       khandan.khandanid
     })`;
+
   useEffect(() => {
     if (userSearch.length > 0) {
       const filtered = userList.filter(
@@ -723,6 +714,7 @@ const Receipt = () => {
       setShowUserDropdown(false);
     }
   }, [userSearch, userList, khandans]);
+
   useEffect(() => {
     if (selectedUser && donationList) {
       const previous = donationList
@@ -734,12 +726,14 @@ const Receipt = () => {
       setUserPreviousDonations([]);
     }
   }, [selectedUser, donationList]);
+
   const getAvailableCategories = () => {
     const selectedCategoryIds = donations.map((d) => d.categoryId);
     return categories.filter(
       (cat) => !selectedCategoryIds.includes(cat._id) && cat.isActive
     );
   };
+
   const handleUserSelect = (user) => {
     setSelectedUser(user);
     setUserSearch("");
@@ -748,36 +742,74 @@ const Receipt = () => {
       userSearchRef.current.blur();
     }
   };
+
   const handleAddDonation = () => {
-    if (!selectedCategory || !quantity) {
-      alert("Please select category and enter quantity");
+    if (!selectedCategory) {
+      toast.warn("Please select a category.");
       return;
     }
     const category = categories.find((cat) => cat._id === selectedCategory);
     if (!category) return;
-    const amount = category.rate * parseInt(quantity);
-    const weight = category.weight * parseInt(quantity);
-    const newDonation = {
-      id: Date.now(),
-      categoryId: category._id,
-      category: category.categoryName,
-      quantity: parseInt(quantity),
-      amount,
-      weight,
-      packet: category.packet,
-    };
+
+    const isDynamic = category.dynamic?.isDynamic;
+    let newDonation;
+
+    if (isDynamic) {
+      const amount = Number(dynamicAmount) || 0;
+      if (amount <= 0) {
+        toast.warn("Please enter a valid amount for the dynamic donation.");
+        return;
+      }
+      let weight = 0;
+      if (amount < category.rate) {
+        weight = category.dynamic.minvalue;
+      } else {
+        weight = Math.floor(amount / category.rate) * category.weight;
+      }
+      newDonation = {
+        id: Date.now(),
+        categoryId: category._id,
+        category: category.categoryName,
+        number: 1,
+        amount: amount,
+        isPacket: false,
+        quantity: weight,
+      };
+    } else {
+      if (!quantity || parseInt(quantity, 10) < 1) {
+        toast.warn("Please enter a valid quantity.");
+        return;
+      }
+      const amount = category.rate * parseInt(quantity, 10);
+      const weight = category.weight * parseInt(quantity, 10);
+      newDonation = {
+        id: Date.now(),
+        categoryId: category._id,
+        category: category.categoryName,
+        number: parseInt(quantity, 10),
+        amount: amount,
+        isPacket: category.packet,
+        quantity: weight,
+      };
+    }
+
     setDonations([...donations, newDonation]);
     setSelectedCategory("");
-    setQuantity("");
+    setQuantity(1);
+    setDynamicAmount("");
+    setSelectedCategoryDetails(null);
   };
+
   const removeDonation = (id) => {
     setDonations(donations.filter((donation) => donation.id !== id));
   };
+
   const isLocalUser =
     selectedUser &&
     ["in_manpur", "in_gaya_outside_manpur"].includes(
       selectedUser.address.currlocation
     );
+
   useEffect(() => {
     if (isLocalUser) {
       setWillCome("YES");
@@ -788,8 +820,17 @@ const Receipt = () => {
     if (selectedCategory) {
       const details = categories.find((c) => c._id === selectedCategory);
       setSelectedCategoryDetails(details);
+      if (details?.dynamic?.isDynamic) {
+        setDynamicAmount(details.rate.toString());
+        setQuantity(1);
+      } else {
+        setDynamicAmount("");
+        setQuantity(details?.packet ? 1 : "");
+      }
     } else {
       setSelectedCategoryDetails(null);
+      setQuantity(1);
+      setDynamicAmount("");
     }
   }, [selectedCategory, categories]);
 
@@ -798,11 +839,11 @@ const Receipt = () => {
     0
   );
   const totalWeight = donations.reduce(
-    (sum, donation) => sum + donation.weight,
+    (sum, donation) => sum + donation.quantity,
     0
   );
   const totalPackets = donations.reduce(
-    (count, donation) => count + (donation.packet ? donation.quantity : 0),
+    (count, donation) => count + (donation.isPacket ? donation.number : 0),
     0
   );
   const courierCharge =
@@ -810,6 +851,7 @@ const Receipt = () => {
       ? getCourierChargeForUser(selectedUser)
       : 0;
   const netPayableAmount = totalAmount + courierCharge;
+
   const updateNestedField = (path, value) => {
     const pathArray = path.split(".");
     setNewUser((prev) => {
@@ -823,6 +865,7 @@ const Receipt = () => {
       return newState;
     });
   };
+
   const handleLocationChange = (locationValue) => {
     updateNestedField("address.currlocation", locationValue);
     const selectedLocation = locationOptions.find(
@@ -834,6 +877,7 @@ const Receipt = () => {
       );
     }
   };
+
   const handleRegisterUser = async () => {
     try {
       setLoading(true);
@@ -886,12 +930,7 @@ const Receipt = () => {
           _id: userId,
           fullname: newUser.fullname,
           username,
-          gender: newUser.gender,
-          dob: newUser.dob,
-          khandanid: newUser.khandanid,
-          fatherid: newUser.fatherid,
-          contact: newUser.contact,
-          address: newUser.address,
+          ...newUser,
         };
         await getUserList();
         handleUserSelect(newUserData);
@@ -934,7 +973,6 @@ const Receipt = () => {
         alert(`Error: ${response.data.message}`);
       }
     } catch (error) {
-      console.error("Error registering user:", error);
       alert(
         `Error registering user: ${
           error.response?.data?.message || error.message
@@ -944,6 +982,7 @@ const Receipt = () => {
       setLoading(false);
     }
   };
+
   const handleRazorpayPayment = async (orderData) => {
     try {
       setPaymentLoading(true);
@@ -983,7 +1022,7 @@ const Receipt = () => {
             );
             if (verifyResponse.data.success) {
               toast.success("Payment successful! Donation recorded.");
-              setReceiptData(verifyResponse.data.data); // Assumes backend returns data on verification
+              setReceiptData(verifyResponse.data.data);
               setShowReceiptModal(true);
               await getDonationList();
             } else {
@@ -1015,6 +1054,7 @@ const Receipt = () => {
       setPaymentLoading(false);
     }
   };
+
   const resetForm = () => {
     setSelectedUser(null);
     setUserSearch("");
@@ -1023,24 +1063,20 @@ const Receipt = () => {
     setCourierAddress("");
     if (donationType === "individual") setPaymentMethod("");
     setRemarks("");
+    setSelectedCategory("");
+    setQuantity(1);
+    setDynamicAmount("");
+    setUserPreviousDonations([]);
   };
+
   const handleSubmit = async () => {
-    if (!selectedUser) {
-      alert("Please select a user");
-      return;
-    }
-    if (donations.length === 0) {
-      alert("Please add at least one donation");
-      return;
-    }
-    if (!paymentMethod) {
-      alert("Please select a payment method");
-      return;
-    }
-    if (willCome === "NO" && !courierAddress.trim()) {
-      alert("Please provide courier address");
-      return;
-    }
+    if (!selectedUser) return alert("Please select a user");
+    if (donations.length === 0)
+      return alert("Please add at least one donation");
+    if (!paymentMethod) return alert("Please select a payment method");
+    if (willCome === "NO" && !courierAddress.trim())
+      return alert("Please provide courier address");
+
     try {
       setLoading(true);
       const orderData = {
@@ -1048,10 +1084,10 @@ const Receipt = () => {
         list: donations.map((d) => ({
           categoryId: d.categoryId,
           category: d.category,
-          number: d.quantity,
+          number: d.number,
           amount: d.amount,
           isPacket: d.packet ? 1 : 0,
-          quantity: d.weight,
+          quantity: d.quantity,
         })),
         amount: netPayableAmount,
         method: paymentMethod,
@@ -1062,6 +1098,7 @@ const Receipt = () => {
             ? courierAddress
             : `${selectedUser.address.street}, ${selectedUser.address.city}, ${selectedUser.address.state} - ${selectedUser.address.pin}`,
       };
+
       if (paymentMethod === "Cash") {
         const response = await axios.post(
           backendUrl + "/api/admin/create-donation-order",
@@ -1070,7 +1107,7 @@ const Receipt = () => {
         );
         if (response.data.success) {
           toast.success("Cash donation recorded successfully!");
-          setReceiptData(response.data.data); // Assumes backend returns { success: true, data: { donationData, userData } }
+          setReceiptData(response.data.data);
           setShowReceiptModal(true);
           await getDonationList();
         } else {
@@ -1087,8 +1124,6 @@ const Receipt = () => {
     }
   };
 
-  // --- UPDATED: Group Donation Functions ---
-
   const handleAddToGroup = () => {
     if (!selectedUser || netPayableAmount <= 0) {
       alert("Please select a user and add donation items first.");
@@ -1098,21 +1133,20 @@ const Receipt = () => {
     const newGroupEntry = {
       localId: Date.now(),
       user: selectedUser,
-      donations: donations, // Keep the full donation items list
+      donations: donations,
       netPayableAmount: netPayableAmount,
-      // Store all necessary details for final submission
       orderPayload: {
         userId: selectedUser._id,
         list: donations.map((d) => ({
           categoryId: d.categoryId,
           category: d.category,
-          number: d.quantity,
+          number: d.number,
           amount: d.amount,
           isPacket: d.packet ? 1 : 0,
-          quantity: d.weight,
+          quantity: d.quantity,
         })),
         amount: netPayableAmount,
-        method: "Cash", // Hardcoded for group
+        method: "Cash",
         courierCharge,
         remarks,
         postalAddress:
@@ -1124,7 +1158,7 @@ const Receipt = () => {
 
     setGroupDonations((prev) => [...prev, newGroupEntry]);
     setTotalGroupAmount((prev) => prev + netPayableAmount);
-    alert(
+    toast.success(
       `${
         selectedUser.fullname
       }'s donation of ₹${netPayableAmount.toLocaleString(
@@ -1155,11 +1189,9 @@ const Receipt = () => {
     ) {
       return;
     }
-
     setIsPayingGroup(true);
     const successfulReceipts = [];
     const failedReceipts = [];
-
     for (const receipt of groupDonations) {
       try {
         const response = await axios.post(
@@ -1182,7 +1214,6 @@ const Receipt = () => {
         });
       }
     }
-
     toast.success(
       `Batch complete! Success: ${successfulReceipts.length}, Failed: ${failedReceipts.length}`
     );
@@ -1198,12 +1229,10 @@ const Receipt = () => {
         { autoClose: 10000 }
       );
     }
-
     if (successfulReceipts.length > 0) {
       setReceiptData(successfulReceipts);
       setShowReceiptModal(true);
     }
-
     await getDonationList();
     setGroupDonations([]);
     setTotalGroupAmount(0);
@@ -1261,83 +1290,80 @@ const Receipt = () => {
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow-lg p-6 md:p-8 space-y-8">
-          {donationType === "group" && (
-            <div className="bg-blue-50 border-l-4 border-blue-500 rounded-r-lg p-6 mb-6">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
-                <h2 className="text-2xl font-bold text-blue-800">
-                  Group Donation Summary
-                </h2>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handlePayGroup}
-                    className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 text-sm disabled:bg-green-400"
-                    disabled={isPayingGroup || groupDonations.length === 0}
-                  >
-                    {isPayingGroup ? "Processing..." : "Pay All as Cash"}
-                  </button>
-                  <button
-                    onClick={handleEndGroup}
-                    className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors flex items-center gap-2 text-sm"
-                    disabled={isPayingGroup}
-                  >
-                    End & Reset
-                  </button>
-                </div>
-              </div>
-              <div className="bg-white p-4 rounded-lg shadow">
-                <div className="flex justify-between items-center border-b pb-2 mb-2">
-                  <span className="text-lg font-semibold text-gray-700">
-                    Total Group Donation:
-                  </span>
-                  <span className="text-2xl font-bold text-blue-600">
-                    ₹{totalGroupAmount.toLocaleString("en-IN")}
-                  </span>
-                </div>
-                <div className="mt-4 max-h-60 overflow-y-auto pr-2">
-                  <h3 className="font-semibold text-gray-600 mb-2">
-                    Receipts Added ({groupDonations.length}):
-                  </h3>
-                  {groupDonations.length > 0 ? (
-                    <ul className="space-y-2">
-                      {groupDonations.map((donation, index) => (
-                        <li
-                          key={donation.localId}
-                          className="flex justify-between items-center text-sm p-2 bg-gray-50 rounded group"
-                        >
-                          <div className="flex items-center gap-3">
-                            <span className="text-gray-800">
-                              {index + 1}. {donation.user.fullname}
-                            </span>
-                            <span className="font-medium text-gray-900">
-                              ₹
-                              {donation.netPayableAmount.toLocaleString(
-                                "en-IN"
-                              )}
-                            </span>
-                          </div>
-                          <button
-                            onClick={() =>
-                              handleDeleteFromGroup(donation.localId)
-                            }
-                            className="text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
-                            title="Remove receipt"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-center text-gray-500 text-sm py-4">
-                      No receipts added to the group yet.
-                    </p>
-                  )}
-                </div>
+        {donationType === "group" && (
+          <div className="bg-blue-50 border-l-4 border-blue-500 rounded-r-lg p-6 mb-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
+              <h2 className="text-2xl font-bold text-blue-800">
+                Group Donation Summary
+              </h2>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handlePayGroup}
+                  className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 text-sm disabled:bg-green-400"
+                  disabled={isPayingGroup || groupDonations.length === 0}
+                >
+                  {isPayingGroup ? "Processing..." : "Pay All as Cash"}
+                </button>
+                <button
+                  onClick={handleEndGroup}
+                  className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors flex items-center gap-2 text-sm"
+                  disabled={isPayingGroup}
+                >
+                  End & Reset
+                </button>
               </div>
             </div>
-          )}
+            <div className="bg-white p-4 rounded-lg shadow">
+              <div className="flex justify-between items-center border-b pb-2 mb-2">
+                <span className="text-lg font-semibold text-gray-700">
+                  Total Group Donation:
+                </span>
+                <span className="text-2xl font-bold text-blue-600">
+                  ₹{totalGroupAmount.toLocaleString("en-IN")}
+                </span>
+              </div>
+              <div className="mt-4 max-h-60 overflow-y-auto pr-2">
+                <h3 className="font-semibold text-gray-600 mb-2">
+                  Receipts Added ({groupDonations.length}):
+                </h3>
+                {groupDonations.length > 0 ? (
+                  <ul className="space-y-2">
+                    {groupDonations.map((donation, index) => (
+                      <li
+                        key={donation.localId}
+                        className="flex justify-between items-center text-sm p-2 bg-gray-50 rounded group"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-gray-800">
+                            {index + 1}. {donation.user.fullname}
+                          </span>
+                          <span className="font-medium text-gray-900">
+                            ₹{donation.netPayableAmount.toLocaleString("en-IN")}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() =>
+                            handleDeleteFromGroup(donation.localId)
+                          }
+                          className="text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Remove receipt"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-center text-gray-500 text-sm py-4">
+                    No receipts added to the group yet.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
+        <div className="bg-white rounded-lg shadow-lg p-6 md:p-8 space-y-8">
           <div className="bg-gray-50 rounded-lg p-4">
             <label className="block text-sm font-semibold text-gray-700 mb-2">
               Select User
@@ -1564,7 +1590,6 @@ const Receipt = () => {
                         required={!isEldest}
                       >
                         <option value="">Select Father</option>
-                        {console.log(usersInSelectedKhandan)}
                         {usersInSelectedKhandan.map((user) => (
                           <option key={user._id} value={user.id}>
                             {user.fullname} ({user.id})
@@ -1579,12 +1604,10 @@ const Receipt = () => {
                         </p>
                       )}
                     </div>
-
                     <div className="pt-1">
                       <h3 className="border-b pb-2 text-lg font-semibold text-gray-800 mb-3">
                         Contact Information
                       </h3>
-
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1604,7 +1627,6 @@ const Receipt = () => {
                             message="Please enter a valid email address"
                           />
                         </div>
-
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
                             Mobile Number
@@ -1623,7 +1645,6 @@ const Receipt = () => {
                               <option value="+91">+91</option>
                               <option value="+1">+1</option>
                               <option value="+44">+44</option>
-                              {/* Add more country codes as needed */}
                             </select>
                             <input
                               type="tel"
@@ -1644,7 +1665,6 @@ const Receipt = () => {
                             message="Please enter a valid 10-digit mobile number"
                           />
                         </div>
-
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
                             WhatsApp Number
@@ -1664,12 +1684,10 @@ const Receipt = () => {
                         </div>
                       </div>
                     </div>
-
                     <div className="pt-1">
                       <h3 className="border-b pb-2 text-lg font-semibold text-gray-800 mb-3">
                         Address Information
                       </h3>
-
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Current Location{" "}
@@ -1689,7 +1707,6 @@ const Receipt = () => {
                           ))}
                         </select>
                       </div>
-
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1708,7 +1725,6 @@ const Receipt = () => {
                             placeholder="Enter country"
                           />
                         </div>
-
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
                             State
@@ -1723,7 +1739,6 @@ const Receipt = () => {
                             placeholder="Enter state"
                           />
                         </div>
-
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
                             District
@@ -1741,7 +1756,6 @@ const Receipt = () => {
                             placeholder="Enter district"
                           />
                         </div>
-
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
                             City
@@ -1756,7 +1770,6 @@ const Receipt = () => {
                             placeholder="Enter city"
                           />
                         </div>
-
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
                             Post Office
@@ -1774,7 +1787,6 @@ const Receipt = () => {
                             placeholder="Enter post office"
                           />
                         </div>
-
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
                             PIN Code
@@ -1790,7 +1802,6 @@ const Receipt = () => {
                             maxLength="6"
                           />
                         </div>
-
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
                             Landmark
@@ -1808,7 +1819,6 @@ const Receipt = () => {
                             placeholder="Enter landmark"
                           />
                         </div>
-
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
                             Street
@@ -1826,7 +1836,6 @@ const Receipt = () => {
                             placeholder="Enter street"
                           />
                         </div>
-
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
                             Apartment/Building
@@ -1844,7 +1853,6 @@ const Receipt = () => {
                             placeholder="Enter apartment/building"
                           />
                         </div>
-
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
                             Floor
@@ -1859,7 +1867,6 @@ const Receipt = () => {
                             placeholder="Enter floor"
                           />
                         </div>
-
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
                             Room
@@ -1880,7 +1887,6 @@ const Receipt = () => {
                       <h3 className="text-lg font-semibold text-gray-800 mb-3">
                         Professional Information (Optional)
                       </h3>
-
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1899,7 +1905,6 @@ const Receipt = () => {
                             placeholder="e.g., IT, Healthcare, Education"
                           />
                         </div>
-
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
                             Job Title
@@ -1917,7 +1922,6 @@ const Receipt = () => {
                             placeholder="e.g., Software Engineer, Doctor"
                           />
                         </div>
-
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
                             Specialization
@@ -2078,79 +2082,88 @@ const Receipt = () => {
             <h2 className="text-xl font-semibold text-gray-800 mb-4">
               Donation Details
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-              <div>
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end bg-gray-50 p-4 rounded-lg">
+              <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Category
                 </label>
                 <select
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  className="w-full px-3 py-2 border rounded-lg bg-white"
                   value={selectedCategory}
-                  onChange={(e) => {
-                    setSelectedCategory(e.target.value);
-                    const selectedCat = categories.find(
-                      (cat) => cat._id === e.target.value
-                    );
-                    if (selectedCat && selectedCat.packet) {
-                      setQuantity("1");
-                    } else {
-                      setQuantity("");
-                    }
-                  }}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
                 >
                   <option value="">Select Category</option>
-                  {getAvailableCategories().map((category) => (
-                    <option key={category._id} value={category._id}>
-                      {category.categoryName}
+                  {getAvailableCategories().map((cat) => (
+                    <option key={cat._id} value={cat._id}>
+                      {cat.categoryName}
                     </option>
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Quantity
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  value={
-                    categories.find((cat) => cat._id === selectedCategory)
-                      ?.packet
-                      ? 1
-                      : quantity
-                  }
-                  onChange={(e) => setQuantity(e.target.value)}
-                  placeholder="Enter quantity"
-                  disabled={
-                    categories.find((cat) => cat._id === selectedCategory)
-                      ?.packet
-                  }
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Amount
-                </label>
-                <div className="px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-700">
-                  {selectedCategory && quantity
-                    ? `₹${
-                        (categories.find((cat) => cat._id === selectedCategory)
-                          ?.rate || 0) * parseInt(quantity || 0)
-                      }`
-                    : "₹0"}
+
+              {selectedCategoryDetails?.dynamic?.isDynamic ? (
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Amount (₹)
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="Enter custom amount"
+                    className="w-full px-3 py-2 border rounded-lg"
+                    value={dynamicAmount}
+                    onChange={(e) => setDynamicAmount(e.target.value)}
+                    disabled={!selectedCategoryDetails}
+                  />
                 </div>
-              </div>
-              <div className="flex items-end">
-                <button
-                  onClick={handleAddDonation}
-                  className="w-full bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
-                >
-                  <Plus className="h-4 w-4" />
-                  Add More
-                </button>
-              </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Quantity
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="Qty"
+                      className="w-full px-3 py-2 border rounded-lg"
+                      value={quantity}
+                      onChange={(e) => setQuantity(e.target.value)}
+                      disabled={
+                        !selectedCategoryDetails ||
+                        selectedCategoryDetails.packet
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Amount (₹)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Amount"
+                      className="w-full px-3 py-2 border rounded-lg bg-gray-200"
+                      value={
+                        selectedCategoryDetails
+                          ? (
+                              selectedCategoryDetails.rate *
+                              (Number(quantity) || 0)
+                            ).toLocaleString("en-IN")
+                          : "0"
+                      }
+                      disabled
+                    />
+                  </div>
+                </>
+              )}
+
+              <button
+                onClick={handleAddDonation}
+                className="bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700 disabled:bg-green-300 flex items-center justify-center gap-2 h-10"
+              >
+                <Plus size={18} /> Add
+              </button>
             </div>
+
             {selectedCategoryDetails && (
               <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 text-sm text-yellow-800 rounded-lg">
                 <div className="flex flex-wrap justify-around items-center gap-x-6 gap-y-2">
@@ -2163,10 +2176,6 @@ const Receipt = () => {
                   <p>
                     <strong>Packet:</strong>{" "}
                     {selectedCategoryDetails.packet ? "Yes" : "No"}
-                  </p>
-                  <p>
-                    <strong>Type:</strong>{" "}
-                    {selectedCategoryDetails.categoryType || "General"}
                   </p>
                 </div>
               </div>
@@ -2206,16 +2215,16 @@ const Receipt = () => {
                           {donation.category}
                         </td>
                         <td className="px-4 py-2 text-sm text-gray-900">
-                          {donation.quantity}
+                          {donation.number}
                         </td>
                         <td className="px-4 py-2 text-sm text-gray-900">
                           ₹{donation.amount}
                         </td>
                         <td className="px-4 py-2 text-sm text-gray-900">
-                          {donation.weight}
+                          {donation.quantity}
                         </td>
                         <td className="px-4 py-2 text-sm text-gray-900">
-                          {donation.packet ? "Yes" : "No"}
+                          {donation.isPacket ? "Yes" : "No"}
                         </td>
                         <td className="px-4 py-2">
                           <button
@@ -2280,8 +2289,7 @@ const Receipt = () => {
                 </div>
                 {netPayableAmount > 0 && (
                   <div className="text-xs text-gray-600 capitalize pt-2 border-t">
-                    <strong>In Words:</strong>{" "}
-                    {convertAmountToWords(netPayableAmount)}
+                    <strong>In Words:</strong> {toWords(netPayableAmount)}
                   </div>
                 )}
               </div>
@@ -2320,7 +2328,7 @@ const Receipt = () => {
                 placeholder="Enter any additional remarks..."
                 value={remarks}
                 onChange={(e) => setRemarks(e.target.value)}
-              />
+              ></textarea>
             </div>
           </div>
 

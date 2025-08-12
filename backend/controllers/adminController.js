@@ -701,7 +701,8 @@ const getAllCategories = async (req, res) => {
 // Add new category
 const addCategory = async (req, res) => {
   try {
-    const { categoryName, rate, weight, packet, description } = req.body;
+    const { categoryName, rate, weight, packet, description, dynamic } =
+      req.body;
     console.log(req.body);
 
     // Validate required fields
@@ -711,7 +712,17 @@ const addCategory = async (req, res) => {
         message: "Category name, rate, and weight are required",
       });
     }
-
+    if (
+      dynamic &&
+      dynamic.isDynamic &&
+      (!dynamic.minvalue || dynamic.minvalue < 0)
+    ) {
+      return res.json({
+        success: false,
+        message:
+          "For a dynamic category, a minimum value of 0 or more is required.",
+      });
+    }
     // Check if category already exists
     const existingCategory = await donationCategoryModel.findOne({
       categoryName: categoryName.trim(),
@@ -731,6 +742,10 @@ const addCategory = async (req, res) => {
       weight: Number(weight),
       packet: Boolean(packet),
       description: description?.trim() || "",
+      dynamic: {
+        isDynamic: dynamic?.isDynamic || false,
+        minvalue: dynamic?.isDynamic ? Number(dynamic.minvalue) : 0,
+      },
     });
 
     const savedCategory = await newCategory.save();
@@ -750,13 +765,26 @@ const addCategory = async (req, res) => {
 const editCategory = async (req, res) => {
   try {
     const { id } = req.params;
-    const { categoryName, rate, weight, packet, description } = req.body;
+    const { categoryName, rate, weight, packet, description, dynamic } =
+      req.body;
 
     // Validate required fields
-    if (!categoryName || !rate || !weight) {
+    if (!categoryName || !rate || !(weight || packet)) {
       return res.json({
         success: false,
-        message: "Category name, rate, and weight are required",
+        message: "Category name, rate, and weight/packet are required",
+      });
+    }
+
+    if (
+      dynamic &&
+      dynamic.isDynamic &&
+      (!dynamic.minvalue || dynamic.minvalue < 0)
+    ) {
+      return res.json({
+        success: false,
+        message:
+          "For a dynamic category, a minimum value of 0 or more is required.",
       });
     }
 
@@ -791,6 +819,10 @@ const editCategory = async (req, res) => {
         weight: Number(weight),
         packet: Boolean(packet),
         description: description?.trim() || "",
+        dynamic: {
+          isDynamic: dynamic?.isDynamic || false,
+          minvalue: dynamic?.isDynamic ? Number(dynamic.minvalue) : 0,
+        },
       },
       { new: true }
     );
@@ -1109,8 +1141,8 @@ const deleteCourierCharge = async (req, res) => {
 
 // Add a new feature
 const addFeature = async (req, res) => {
-  const { featureName, link, iconName } = req.body;
-  if (!featureName || !link || !iconName) {
+  const { featureName, link, iconName, access } = req.body;
+  if (!featureName || !link || !iconName || !access) {
     return res.json({ success: false, message: "All fields are required" });
   }
 
@@ -1118,6 +1150,7 @@ const addFeature = async (req, res) => {
     featureName,
     link,
     iconName,
+    access,
   });
 
   try {
@@ -1132,7 +1165,11 @@ const addFeature = async (req, res) => {
 // Get all features
 const listFeatures = async (req, res) => {
   try {
-    const features = await featureModel.find({});
+    const filter = {};
+    if (req.query.access) {
+      filter.access = req.query.access;
+    }
+    const features = await featureModel.find(filter);
     res.json({ success: true, data: features });
   } catch (error) {
     console.log(error);
@@ -1165,35 +1202,43 @@ const getDonationCount = async (req, res) => {
   try {
     const { year } = req.query; // Get year from query params
     const currentYear = new Date().getFullYear();
-    const targetYear = year ? parseInt(year) : currentYear;
+    const targetYear = year ? parseInt(year) : currentYear; // Create start and end dates for the year
 
-    // Create start and end dates for the year
     const startDate = new Date(targetYear, 0, 1); // January 1st
-    const endDate = new Date(targetYear + 1, 0, 1); // January 1st of next year
+    const endDate = new Date(targetYear + 1, 0, 1); // January 1st of next year // 1. Get monthly donation amounts for registered users
 
-    // Get monthly donation amounts for 'completed' payments in the specified year
     const monthlyDonations = await donationModel.aggregate([
       {
         $match: {
-          createdAt: {
-            $gte: startDate,
-            $lt: endDate,
-          },
-          paymentStatus: "completed", // <-- This is the crucial filter
+          createdAt: { $gte: startDate, $lt: endDate },
+          paymentStatus: "completed",
         },
       },
       {
         $group: {
           _id: { month: { $month: "$createdAt" } },
-          totalAmount: { $sum: "$amount" }, // Sum the donation amounts
+          totalAmount: { $sum: "$amount" },
+        },
+      },
+      { $sort: { "_id.month": 1 } },
+    ]); // 2. Get monthly donation amounts for guest users
+
+    const monthlyGuestDonations = await guestDonationModel.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: startDate, $lt: endDate },
+          paymentStatus: "completed",
         },
       },
       {
-        $sort: { "_id.month": 1 },
+        $group: {
+          _id: { month: { $month: "$createdAt" } },
+          totalAmount: { $sum: "$amount" },
+        },
       },
-    ]);
+      { $sort: { "_id.month": 1 } },
+    ]); // 3. Combine the results from both sources
 
-    // Create an array with all 12 months, filling missing months with 0
     const monthNames = [
       "Jan",
       "Feb",
@@ -1210,20 +1255,28 @@ const getDonationCount = async (req, res) => {
     ];
 
     const monthlyData = monthNames.map((month, index) => {
-      const monthData = monthlyDonations.find(
-        (item) => item._id.month === index + 1
+      const monthIndex = index + 1; // Find data for the current month, defaulting to 0 if not found
+
+      const userDonationData = monthlyDonations.find(
+        (item) => item._id.month === monthIndex
       );
+      const guestDonationData = monthlyGuestDonations.find(
+        (item) => item._id.month === monthIndex
+      );
+
+      const userAmount = userDonationData ? userDonationData.totalAmount : 0;
+      const guestAmount = guestDonationData ? guestDonationData.totalAmount : 0;
+
       return {
         month,
-        donations: monthData ? monthData.totalAmount : 0,
+        donations: userAmount + guestAmount, // Sum of both donation types
       };
-    });
+    }); // 4. Calculate the total amount for the entire year
 
-    // Calculate the total amount for the entire year
     const totalAmount = monthlyData.reduce(
       (sum, month) => sum + month.donations,
       0
-    );
+    ); // 5. Send the final combined data
 
     res.json({
       success: true,

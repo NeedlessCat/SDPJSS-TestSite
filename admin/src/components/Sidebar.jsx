@@ -14,13 +14,16 @@ const Sidebar = ({ isSidebarOpen, setIsSidebarOpen }) => {
   // Fetch features from backend
   const fetchFeatures = async () => {
     try {
-      const response = await fetch(`${backendUrl}/api/admin/list`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          atoken: aToken,
-        },
-      });
+      const response = await fetch(
+        `${backendUrl}/api/admin/list?access=admin`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            atoken: aToken,
+          },
+        }
+      );
 
       const data = await response.json();
 

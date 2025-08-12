@@ -12,7 +12,11 @@ const userSchema = new mongoose.Schema(
     },
     fatherid: {
       type: String,
-      required: true,
+      default: "",
+    },
+    fatherName: {
+      type: String,
+      default: "",
     },
     mother: {
       type: String,

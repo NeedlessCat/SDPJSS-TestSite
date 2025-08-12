@@ -30,6 +30,13 @@ const donationCategorySchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    dynamic: {
+      type: Object,
+      default: {
+        isDynamic: false,
+        minvalue: 0,
+      },
+    },
   },
   { timestamps: true }
 );

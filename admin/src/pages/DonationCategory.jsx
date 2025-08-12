@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext } from "react";
-import { Plus, Edit, Trash2, Save, X, Truck } from "lucide-react";
+import { Plus, Edit, Trash2, Save, X, Truck, Zap } from "lucide-react";
 import { AdminContext } from "../context/AdminContext"; // Adjust path as needed
 import { toast } from "react-toastify";
 import axios from "axios";
@@ -7,7 +7,8 @@ import axios from "axios";
 const DonationCategory = () => {
   const { aToken, backendUrl, formatIndianCommas, capitalizeEachWord } =
     useContext(AdminContext);
-  const [categories, setCategories] = useState([]);
+  const [standardCategories, setStandardCategories] = useState([]);
+  const [dynamicCategories, setDynamicCategories] = useState([]);
   const [courierCharges, setCourierCharges] = useState([]);
   const [loading, setLoading] = useState(true);
   const [courierLoading, setCourierLoading] = useState(false);
@@ -25,6 +26,10 @@ const DonationCategory = () => {
     weight: "",
     packet: false,
     description: "",
+    dynamic: {
+      isDynamic: false,
+      minvalue: 0,
+    },
   });
 
   const [courierFormData, setCourierFormData] = useState({
@@ -54,7 +59,12 @@ const DonationCategory = () => {
       });
 
       if (data.success) {
-        setCategories(data.categories);
+        const standard = data.categories.filter(
+          (cat) => !cat.dynamic?.isDynamic
+        );
+        const dynamic = data.categories.filter((cat) => cat.dynamic?.isDynamic);
+        setStandardCategories(standard);
+        setDynamicCategories(dynamic);
       } else {
         toast.error(data.message || "Failed to fetch categories");
       }
@@ -93,10 +103,22 @@ const DonationCategory = () => {
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: type === "checkbox" ? checked : capitalizeEachWord(value),
-    }));
+    if (name === "isDynamic") {
+      setFormData((prev) => ({
+        ...prev,
+        dynamic: { ...prev.dynamic, isDynamic: checked },
+      }));
+    } else if (name === "minvalue") {
+      setFormData((prev) => ({
+        ...prev,
+        dynamic: { ...prev.dynamic, minvalue: value },
+      }));
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        [name]: type === "checkbox" ? checked : capitalizeEachWord(value),
+      }));
+    }
   };
 
   const handleCourierInputChange = (e) => {
@@ -112,6 +134,13 @@ const DonationCategory = () => {
       toast.error("Category name, rate, and weight are required");
       return;
     }
+    if (
+      formData.dynamic.isDynamic &&
+      (!formData.dynamic.minvalue || formData.dynamic.minvalue < 0)
+    ) {
+      toast.error("A valid minimum value is required for dynamic categories.");
+      return;
+    }
 
     try {
       setSubmitting(true);
@@ -121,6 +150,7 @@ const DonationCategory = () => {
         weight: Number(formData.weight),
         packet: formData.packet,
         description: formData.description.trim(),
+        dynamic: formData.dynamic,
       };
 
       let response;
@@ -210,6 +240,10 @@ const DonationCategory = () => {
       weight: "",
       packet: false,
       description: "",
+      dynamic: {
+        isDynamic: false,
+        minvalue: 0,
+      },
     });
     setShowModal(true);
   };
@@ -230,6 +264,10 @@ const DonationCategory = () => {
       weight: category.weight.toString(),
       packet: category.packet,
       description: category.description || "",
+      dynamic: {
+        isDynamic: category.dynamic?.isDynamic || false,
+        minvalue: category.dynamic?.minvalue || 0,
+      },
     });
     setEditingId(category._id);
     setShowModal(true);
@@ -301,6 +339,10 @@ const DonationCategory = () => {
       weight: "",
       packet: false,
       description: "",
+      dynamic: {
+        isDynamic: false,
+        minvalue: 0,
+      },
     });
     setEditingId(null);
     setShowModal(false);
@@ -320,7 +362,11 @@ const DonationCategory = () => {
     return region ? region.label : regionValue;
   };
 
-  if (loading && categories.length === 0) {
+  if (
+    loading &&
+    standardCategories.length === 0 &&
+    dynamicCategories.length === 0
+  ) {
     return (
       <div className="flex-1 p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto">
         <div className="flex items-center justify-center h-64">
@@ -332,6 +378,128 @@ const DonationCategory = () => {
       </div>
     );
   }
+
+  // Helper component for rendering category tables
+  const CategoryTable = ({ title, categories, icon }) => (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-8">
+      <div className="p-4 sm:p-6 border-b border-gray-100">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg sm:text-xl font-semibold text-gray-900 flex items-center gap-2">
+            {icon}
+            {title} ({categories.length})
+          </h2>
+          {title === "Standard Categories" && (
+            <button
+              onClick={handleAddCategory}
+              disabled={loading}
+              className="bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white px-4 py-2 rounded-lg font-medium text-sm transition-colors duration-200 flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              Add Category
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="p-4 sm:p-6">
+        {categories.length === 0 ? (
+          <div className="text-center py-8 sm:py-12">
+            <p className="text-gray-500 text-sm sm:text-base">
+              No {title.toLowerCase()} available.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full table-auto">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
+                    Category Name
+                  </th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
+                    Base Rate
+                  </th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
+                    Base Weight
+                  </th>
+                  {title.includes("Dynamic") && (
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
+                      Min. Weight
+                    </th>
+                  )}
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
+                    Packet
+                  </th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
+                    Description
+                  </th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {categories.map((category) => (
+                  <tr
+                    key={category._id}
+                    className="border-b border-gray-200 hover:bg-gray-50"
+                  >
+                    <td className="px-4 py-3 text-sm text-gray-900 font-medium">
+                      {category.categoryName}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      ₹ {formatIndianCommas(category.rate)}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      {category.weight} g
+                    </td>
+                    {title.includes("Dynamic") && (
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {category.dynamic.minvalue} g
+                      </td>
+                    )}
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      <span
+                        className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                          category.packet
+                            ? "bg-green-100 text-green-800"
+                            : "bg-gray-100 text-gray-800"
+                        }`}
+                      >
+                        {category.packet ? "Yes" : "No"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-700 max-w-xs truncate">
+                      {category.description || "N/A"}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleEdit(category)}
+                          disabled={loading}
+                          className="p-2 bg-blue-100 hover:bg-blue-200 disabled:bg-blue-50 text-blue-700 rounded-lg transition-colors"
+                          title="Edit"
+                        >
+                          <Edit size={16} />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(category._id)}
+                          disabled={loading}
+                          className="p-2 bg-red-100 hover:bg-red-200 disabled:bg-red-50 text-red-700 rounded-lg transition-colors"
+                          title="Delete"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
   return (
     <div className="flex-1 p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto">
@@ -361,7 +529,8 @@ const DonationCategory = () => {
                   : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
               }`}
             >
-              Categories ({categories.length})
+              Categories ({standardCategories.length + dynamicCategories.length}
+              )
             </button>
             <button
               onClick={() => setActiveTab("courier")}
@@ -380,112 +549,17 @@ const DonationCategory = () => {
 
       {/* Categories Tab */}
       {activeTab === "categories" && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-          <div className="p-4 sm:p-6 border-b border-gray-100">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
-                Donation Categories ({categories.length})
-              </h2>
-              <button
-                onClick={handleAddCategory}
-                disabled={loading}
-                className="bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white px-4 py-2 rounded-lg font-medium text-sm transition-colors duration-200 flex items-center gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                Add Category
-              </button>
-            </div>
-          </div>
-
-          <div className="p-4 sm:p-6">
-            {categories.length === 0 ? (
-              <div className="text-center py-8 sm:py-12">
-                <Plus className="w-12 h-12 sm:w-16 sm:h-16 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500 text-sm sm:text-base">
-                  No categories available. Add your first category!
-                </p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full table-auto">
-                  <thead>
-                    <tr className="bg-gray-100">
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
-                        Category Name
-                      </th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
-                        Rate
-                      </th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
-                        Weight
-                      </th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
-                        Packet
-                      </th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
-                        Description
-                      </th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {categories.map((category) => (
-                      <tr
-                        key={category._id}
-                        className="border-b border-gray-200 hover:bg-gray-50"
-                      >
-                        <td className="px-4 py-3 text-sm text-gray-900 font-medium">
-                          {category.categoryName}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-700">
-                          ₹ {formatIndianCommas(category.rate)}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-700">
-                          {category.weight} g
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-700">
-                          <span
-                            className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                              category.packet
-                                ? "bg-green-100 text-green-800"
-                                : "bg-gray-100 text-gray-800"
-                            }`}
-                          >
-                            {category.packet ? "Yes" : "No"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-700 max-w-xs truncate">
-                          {category.description || "No description"}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-700">
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => handleEdit(category)}
-                              disabled={loading}
-                              className="p-2 bg-blue-100 hover:bg-blue-200 disabled:bg-blue-50 text-blue-700 rounded-lg transition-colors"
-                              title="Edit"
-                            >
-                              <Edit size={16} />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(category._id)}
-                              disabled={loading}
-                              className="p-2 bg-red-100 hover:bg-red-200 disabled:bg-red-50 text-red-700 rounded-lg transition-colors"
-                              title="Delete"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+        <div>
+          <CategoryTable
+            title="Standard Categories"
+            categories={standardCategories}
+            icon={<Plus className="w-5 h-5" />}
+          />
+          <CategoryTable
+            title="Dynamic Categories"
+            categories={dynamicCategories}
+            icon={<Zap className="w-5 h-5 text-yellow-500" />}
+          />
         </div>
       )}
 
@@ -597,6 +671,32 @@ const DonationCategory = () => {
             </div>
 
             <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
+              {/* --- DYNAMIC CATEGORY TOGGLE --- */}
+              <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg">
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    name="isDynamic"
+                    id="isDynamic"
+                    checked={formData.dynamic.isDynamic}
+                    onChange={handleInputChange}
+                    disabled={submitting}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50"
+                  />
+                  <label
+                    htmlFor="isDynamic"
+                    className="ml-2 block text-sm font-medium text-yellow-800"
+                  >
+                    This is a Dynamic Category
+                  </label>
+                </div>
+                <p className="text-xs text-yellow-700 mt-2">
+                  Enable this if users can donate a custom amount for this
+                  category. The weight will be calculated proportionally.
+                </p>
+              </div>
+
+              {/* --- STANDARD INPUTS --- */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Category Name *
@@ -616,7 +716,9 @@ const DonationCategory = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Rate (₹) *
+                    {formData.dynamic.isDynamic
+                      ? "Base Rate (₹) *"
+                      : "Rate (₹) *"}
                   </label>
                   <input
                     type="number"
@@ -631,10 +733,11 @@ const DonationCategory = () => {
                     placeholder="Enter rate"
                   />
                 </div>
-
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Weight (g) *
+                    {formData.dynamic.isDynamic
+                      ? "Base Weight (g) *"
+                      : "Weight (g) *"}
                   </label>
                   <input
                     type="number"
@@ -650,6 +753,30 @@ const DonationCategory = () => {
                   />
                 </div>
               </div>
+
+              {/* --- DYNAMIC-ONLY INPUT --- */}
+              {formData.dynamic.isDynamic && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Minimum Weight (g) *
+                  </label>
+                  <input
+                    type="number"
+                    name="minvalue"
+                    value={formData.dynamic.minvalue}
+                    onChange={handleInputChange}
+                    min="0"
+                    required
+                    disabled={submitting}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm sm:text-base disabled:bg-gray-50"
+                    placeholder="Min. weight for small donations"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Weight to be assigned if donation amount is less than the
+                    base rate.
+                  </p>
+                </div>
+              )}
 
               <div className="flex items-center">
                 <input

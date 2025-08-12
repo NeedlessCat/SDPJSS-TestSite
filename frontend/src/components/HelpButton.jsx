@@ -7,12 +7,14 @@ import {
   CheckCircle,
   LogIn,
   Heart,
-  Briefcase,
-  PlusCircle,
   Edit3,
-  Trash2,
   Eye,
   Info,
+  Mail, // New
+  KeyRound, // New
+  Bell, // New
+  ListChecks, // New
+  Phone, // New
 } from "lucide-react";
 
 const HelpButton = () => {
@@ -37,69 +39,70 @@ const HelpButton = () => {
     setIsModalOpen(false);
   };
 
+  // --- UPDATED DATA ---
   const steps = [
     {
       id: 1,
-      title: "Register Family",
-      description: "Create your family account",
-      icon: <Users className="w-5 h-5 text-red-600" />,
+      title: "Register Account",
+      description: "Sign up and select 'sdpjss' as your community.",
+      icon: <UserPlus className="w-5 h-5 text-red-600" />,
     },
     {
       id: 2,
-      title: "Add Members",
-      description: "Include all family members",
-      icon: <UserPlus className="w-5 h-5 text-rose-600" />,
+      title: "Complete Your Profile",
+      description: "Fill in all your personal details accurately.",
+      icon: <Edit3 className="w-5 h-5 text-rose-600" />,
     },
     {
       id: 3,
-      title: "Complete Profiles",
-      description: "Fill member details",
-      icon: <Edit3 className="w-5 h-5 text-pink-600" />,
+      title: "Check Your Email",
+      description: "Your username and password will be sent to you.",
+      icon: <Mail className="w-5 h-5 text-pink-600" />,
     },
     {
       id: 4,
-      title: "Wait for Approval",
-      description: "Admin review (3-4 days)",
-      icon: <CheckCircle className="w-5 h-5 text-red-700" />,
+      title: "Login to Portal",
+      description: "Access the user portal with your new credentials.",
+      icon: <LogIn className="w-5 h-5 text-red-700" />,
     },
     {
       id: 5,
-      title: "Login & Access",
-      description: "Use the User Portal",
-      icon: <LogIn className="w-5 h-5 text-rose-700" />,
+      title: "Secure Your Account",
+      description: "It's recommended to change your password on first login.",
+      icon: <KeyRound className="w-5 h-5 text-rose-700" />,
     },
   ];
 
   const features = [
     {
-      title: "Donations",
+      title: "Make Donations",
       icon: <Heart className="w-4 h-4 text-red-500" />,
-      description: "Support community",
+      description: "Support causes with categorized giving.",
     },
     {
-      title: "Staff Needs",
-      icon: <Briefcase className="w-4 h-4 text-rose-500" />,
-      description: "Post requirements",
+      title: "Manage Profile",
+      icon: <Users className="w-4 h-4 text-rose-500" />,
+      description: "Update your personal information.",
     },
     {
-      title: "Job Posts",
-      icon: <PlusCircle className="w-4 h-4 text-pink-500" />,
-      description: "Share opportunities",
+      title: "Donation History",
+      icon: <ListChecks className="w-4 h-4 text-pink-500" />,
+      description: "Track all your past contributions.",
     },
     {
-      title: "Manage Ads",
-      icon: <Edit3 className="w-4 h-4 text-red-600" />,
-      description: "Create & edit ads",
+      title: "Notice Board",
+      icon: <Bell className="w-4 h-4 text-red-600" />,
+      description: "Get notified with all updates.",
     },
     {
-      title: "Full Control",
-      icon: <Trash2 className="w-4 h-4 text-rose-600" />,
-      description: "Edit & delete content",
+      title: "About & Team",
+      icon: <Info className="w-4 h-4 text-rose-600" />,
+      description: "Learn about the organization.",
     },
     {
-      title: "Public View",
-      icon: <Eye className="w-4 h-4 text-pink-600" />,
-      description: "Everyone can see posts",
+      title: "Contact Us",
+      icon: <Phone className="w-4 h-4 text-pink-600" />,
+      description: "Reach out via email or phone.",
     },
   ];
 
@@ -166,7 +169,7 @@ const HelpButton = () => {
                       Welcome to Our Community!
                     </h3>
                     <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">
-                      Get started in 5 simple steps and join our platform.
+                      Follow these simple steps to get started on our platform.
                     </p>
                   </div>
                 </div>
@@ -178,7 +181,7 @@ const HelpButton = () => {
                   <span className="w-6 h-6 bg-red-100 rounded-full flex items-center justify-center text-red-600 text-sm font-bold">
                     5
                   </span>
-                  Quick Steps
+                  Quick Steps to Get Started
                 </h3>
 
                 {/* Mobile: Compact Cards */}
@@ -240,7 +243,7 @@ const HelpButton = () => {
                   <span className="w-6 h-6 bg-rose-100 rounded-full flex items-center justify-center text-rose-600 text-sm">
                     ✨
                   </span>
-                  After Approval
+                  What You Can Do
                 </h3>
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-4">
@@ -276,19 +279,21 @@ const HelpButton = () => {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 sm:gap-2 text-xs sm:text-sm text-gray-600">
                       <div className="flex items-start gap-2">
                         <span className="text-amber-600 mt-0.5">•</span>
-                        <span>Approval takes 3-4 days</span>
+                        <span>Login details are sent to your email.</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <span className="text-amber-600 mt-0.5">•</span>
-                        <span>All controls in User Portal</span>
+                        <span>
+                          Change password on first login for security.
+                        </span>
                       </div>
                       <div className="flex items-start gap-2">
                         <span className="text-amber-600 mt-0.5">•</span>
-                        <span>Jobs & staff posts are public</span>
+                        <span>Donation receipts are also emailed to you.</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <span className="text-amber-600 mt-0.5">•</span>
-                        <span>Community notice board available</span>
+                        <span>Track donations in the User Portal.</span>
                       </div>
                     </div>
                   </div>

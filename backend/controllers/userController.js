@@ -12,6 +12,7 @@ import jobOpeningModel from "../models/JobOpeningModel.js";
 import staffRequirementModel from "../models/StaffRequirementModel.js";
 import advertisementModel from "../models/AdvertisementModel.js";
 import donationModel from "../models/DonationModel.js";
+import featureModel from "../models/FeatureModel.js";
 
 // Initialize Razorpay
 const razorpayInstance = new razorpay({
@@ -237,37 +238,64 @@ const registerUser = async (req, res) => {
   try {
     console.log(req.body);
     const {
-      fullname,
+      fullname: rawFullname,
       fatherid,
-      mother,
+      fatherName: rawFatherName,
+      mother: rawMother,
       gender,
       dob,
       bloodgroup,
       khandanid,
-      email,
+      email: rawEmail,
       mobile,
-      address,
+      address: rawAddress,
       education,
       profession,
-      healthissue,
+      healthissue: rawHealthissue,
       marriage,
     } = req.body;
 
+    const fullname = rawFullname?.trim();
+    const fatherName = rawFatherName?.trim();
+    const mother = rawMother?.trim();
+    const email = rawEmail?.trim();
+    const healthissue = rawHealthissue?.trim();
+
     // Validate required fields
-    if (!fullname || !fatherid || !gender || !dob || !khandanid || !address) {
+    if (
+      !fullname ||
+      !(fatherid || fatherName) ||
+      !gender ||
+      !dob ||
+      !khandanid ||
+      !rawAddress
+    ) {
       return res.json({
         success: false,
         message:
-          "Missing required details: fullname, fatherid, gender, dob, khandanid, and address are required",
+          "Missing required details: fullname, fatherid/fatheName, gender, dob, khandanid, and address are required",
       });
     }
-
+    // --- TRIMMED --- Create a new address object with trimmed values
+    const address = {
+      currlocation: rawAddress.currlocation?.trim(),
+      country: rawAddress.country?.trim(),
+      state: rawAddress.state?.trim(),
+      district: rawAddress.district?.trim(),
+      city: rawAddress.city?.trim(),
+      postoffice: rawAddress.postoffice?.trim(),
+      pin: rawAddress.pin?.trim(),
+      street: rawAddress.street?.trim(),
+      landmark: rawAddress.landmark?.trim(),
+      apartment: rawAddress.apartment?.trim(),
+      floor: rawAddress.floor?.trim(),
+      room: rawAddress.room?.trim(),
+    };
     // Validate required address fields
     const requiredAddressFields = [
       "currlocation",
       "country",
       "state",
-      "district",
       "city",
       "postoffice",
       "pin",
@@ -287,7 +315,7 @@ const registerUser = async (req, res) => {
     }
 
     // Validate that at least one contact method is provided
-    const hasEmail = email && email.trim() !== "";
+    const hasEmail = email && email !== "";
     const hasMobile = mobile && mobile.code && mobile.number;
 
     if (!hasEmail && !hasMobile) {
@@ -333,32 +361,32 @@ const registerUser = async (req, res) => {
       });
     }
 
-    // // Check if email already exists (if provided)
-    // if (hasEmail) {
-    //   const existingUserByEmail = await userModel.findOne({
-    //     "contact.email": email,
-    //   });
-    //   if (existingUserByEmail) {
-    //     return res.json({
-    //       success: false,
-    //       message: "Email already registered",
-    //     });
-    //   }
-    // }
+    // Check for an existing user with the same name, father's name, and DOB.
+    const existingUser = await userModel.findOne({
+      fullname: fullname,
+      fatherName: fatherName,
+      dob: dobDate,
+    });
 
-    // // Check if mobile already exists (if provided)
-    // if (hasMobile) {
-    //   const existingUserByMobile = await userModel.findOne({
-    //     "contact.mobileno.code": mobile.code,
-    //     "contact.mobileno.number": mobile.number,
-    //   });
-    //   if (existingUserByMobile) {
-    //     return res.json({
-    //       success: false,
-    //       message: "Mobile number already registered",
-    //     });
-    //   }
-    // }
+    if (existingUser) {
+      return res.json({
+        success: false,
+        message:
+          "A user with the same name, father's name, and date of birth already exists.",
+      });
+    }
+
+    const today = new Date();
+    const minAllowedDate = new Date();
+    minAllowedDate.setFullYear(today.getFullYear() - 10);
+
+    // Check if DOB is at least 10 years earlier
+    if (dobDate > minAllowedDate) {
+      return res.json({
+        success: false,
+        message: "You must be at least 10 years old",
+      });
+    }
 
     // Generate unique user ID
     const userId = await generateUserId();
@@ -391,12 +419,12 @@ const registerUser = async (req, res) => {
       currlocation: address.currlocation,
       country: address.country,
       state: address.state,
-      district: address.district,
       city: address.city,
       postoffice: address.postoffice,
       pin: address.pin,
       street: address.street,
       // Optional fields
+      district: address.district || "",
       landmark: address.landmark || "",
       apartment: address.apartment || "",
       floor: address.floor || "",
@@ -408,6 +436,7 @@ const registerUser = async (req, res) => {
       fullname,
       id: userId,
       fatherid,
+      fatherName,
       mother: mother || "",
       gender: gender.toLowerCase(),
       dob: dobDate,
@@ -485,7 +514,15 @@ const registerUser = async (req, res) => {
 const loginUser = async (req, res) => {
   try {
     // console.log("Request Body User: ", req.body);
-    const { username, password } = req.body;
+    const { username: rawUsername, password } = req.body;
+    const username = rawUsername?.trim();
+
+    if (!username || !password) {
+      return res.json({
+        success: false,
+        message: "Username and password are required",
+      });
+    }
     const user = await userModel.findOne({ username });
 
     if (!user) {
@@ -1574,9 +1611,19 @@ const sendUsernameEmail = async (email, username, fullname) => {
 // NEW: API for Forgot Username
 const forgotUsername = async (req, res) => {
   try {
-    const { fullname, khandanid, fatherid, dob } = req.body;
+    const {
+      fullname: rawFullname,
+      khandanid,
+      fatherid,
+      fatherName: rawFatherName,
+      dob,
+    } = req.body;
 
-    if (!fullname || !khandanid || !fatherid || !dob) {
+    // --- TRIMMED --- Trim the incoming lookup fields
+    const fullname = rawFullname?.trim();
+    const fatherName = rawFatherName?.trim();
+
+    if (!fullname || !khandanid || !(fatherid || fatherName) || !dob) {
       return res.json({
         success: false,
         message: "All fields (Full Name, Khandan, Father, DOB) are required.",
@@ -1586,7 +1633,8 @@ const forgotUsername = async (req, res) => {
     const user = await userModel.findOne({
       fullname,
       khandanid,
-      fatherid,
+      // fatherid,
+      fatherName,
       dob: new Date(dob),
     });
 
@@ -1668,7 +1716,9 @@ const sendLoginOtp = async (req, res) => {
 // NEW: Login with OTP
 const loginWithOtp = async (req, res) => {
   try {
-    const { username, otp } = req.body;
+    const { username: rawUsername, otp } = req.body;
+    const username = rawUsername?.trim(); // --- TRIMMED ---
+
     if (!username || !otp) {
       return res.json({
         success: false,
@@ -2072,6 +2122,7 @@ const generateBillHTML = (donationData, userData) => {
         <div class="donor-info">
           <h3>Donor Information</h3>
           <p><strong>Name:</strong> ${userData.fullname}</p>
+          <p><strong>Father:</strong> ${userData.fatherName}</p>
           <p><strong>Contact:</strong> ${userData.contact.email || ""} ${
     userData.contact.email && userData.contact.mobileno.number !== "0000000000"
       ? "|"
@@ -2280,7 +2331,7 @@ const generateReceiptId = async (method) => {
       }
     }
 
-    const paddedNumber = nextNumber.toString().padStart(7, "0"); // 7 digits for auto-increment
+    const paddedNumber = nextNumber.toString().padStart(5, "0"); // 7 digits for auto-increment
     return `${prefix}${paddedNumber}`;
   } catch (error) {
     console.error("Error generating receipt ID:", error);
@@ -2683,7 +2734,8 @@ const sendOtpEmail = async (email, otp, fullname) => {
 // MODIFIED: forgotPassword to use username
 const forgotPassword = async (req, res) => {
   try {
-    const { username } = req.body;
+    const { username: rawUsername } = req.body;
+    const username = rawUsername?.trim(); // --- TRIMMED ---
 
     if (!username) {
       return res.json({
@@ -2739,7 +2791,8 @@ const forgotPassword = async (req, res) => {
 // MODIFIED: verifyOtp to use username
 const verifyOtp = async (req, res) => {
   try {
-    const { username, otp } = req.body;
+    const { username: rawUsername, otp } = req.body;
+    const username = rawUsername?.trim(); // --- TRIMMED ---
 
     if (!username || !otp) {
       return res.json({
@@ -2779,7 +2832,8 @@ const verifyOtp = async (req, res) => {
 // MODIFIED: resetPassword to use username
 const resetPassword = async (req, res) => {
   try {
-    const { username, newPassword } = req.body;
+    const { username: rawUsername, otp, newPassword } = req.body;
+    const username = rawUsername?.trim(); // --- TRIMMED ---
 
     if (!username || !newPassword) {
       return res.json({
@@ -2854,6 +2908,21 @@ const sendPasswordResetConfirmationEmail = async (email, fullname) => {
   }
 };
 
+// List features specifically for the user portal
+const listUserFeatures = async (req, res) => {
+  try {
+    // Find features that are specifically for 'user' access and are 'active'
+    const features = await featureModel.find({
+      access: "user",
+      isActive: true,
+    });
+    res.json({ success: true, data: features });
+  } catch (error) {
+    console.log(error);
+    res.json({ success: false, message: "Error fetching features" });
+  }
+};
+
 // Update the export statement to include the new functions
 export {
   registerUser,
@@ -2894,4 +2963,5 @@ export {
   forgotUsername,
   sendLoginOtp,
   loginWithOtp,
+  listUserFeatures,
 };

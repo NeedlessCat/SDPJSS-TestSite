@@ -7,16 +7,14 @@ import {
   CreditCard,
   Plus,
   Minus,
-  QrCode,
   Clock,
 } from "lucide-react";
 import { AppContext } from "../../context/AppContext";
-// import QRCode from "qrcode.react";
 
 const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
   const [userProfile, setUserProfile] = useState(null);
   const [categories, setCategories] = useState([]);
-  const [khandanDetails, setKhandanDetails] = useState(null);
+  // const [khandanDetails, setKhandanDetails] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [courierCharges, setCourierCharges] = useState([]);
@@ -35,6 +33,8 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
         unitWeight: 0,
         unitPacket: 0,
         isPacketBased: false,
+        isDynamic: false,
+        minvalue: 0,
       },
     ],
     paymentMethod: "",
@@ -47,10 +47,8 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
     netPayable: 0,
   });
 
-  // const paymentMethods = ["Cash", "Online", "QR Code"];
   const paymentMethods = ["Online"];
 
-  // Load Razorpay script
   const loadRazorpayScript = () => {
     return new Promise((resolve) => {
       const script = document.createElement("script");
@@ -60,9 +58,8 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
       document.body.appendChild(script);
     });
   };
-  const { donations } = useContext(AppContext);
 
-  // Get last 2 donations
+  const { donations } = useContext(AppContext);
   const previousDonations = donations ? donations.slice(0, 2) : [];
 
   const convertAmountToWords = (amount) => {
@@ -123,50 +120,36 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
     };
 
     if (amount === 0) return "zero rupees only";
-
     let amountStr = Math.floor(amount).toString();
     let words = "";
-
-    // Handle crores (10,000,000)
     if (amountStr.length > 7) {
       const crores = parseInt(amountStr.slice(0, -7));
       words += convertHundreds(crores) + "crore ";
       amountStr = amountStr.slice(-7);
     }
-
-    // Handle lakhs (100,000)
     if (amountStr.length > 5) {
       const lakhs = parseInt(amountStr.slice(0, -5));
       words += convertHundreds(lakhs) + "lakh ";
       amountStr = amountStr.slice(-5);
     }
-
-    // Handle thousands (1,000)
     if (amountStr.length > 3) {
       const thousands = parseInt(amountStr.slice(0, -3));
       words += convertHundreds(thousands) + "thousand ";
       amountStr = amountStr.slice(-3);
     }
-
-    // Handle hundreds
     if (parseInt(amountStr) > 0) {
       words += convertHundreds(parseInt(amountStr));
     }
-
     return words.trim() + " rupees only";
   };
 
   const fetchCourierCharges = async () => {
     try {
       const response = await fetch(`${backendUrl}/api/user/courier-charges`, {
-        headers: {
-          utoken: userToken,
-        },
+        headers: { utoken: userToken },
       });
-
       if (response.ok) {
         const data = await response.json();
-        console.log(data);
         setCourierCharges(data.courierCharges);
       } else {
         console.error("Failed to fetch courier charges");
@@ -176,7 +159,6 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
     }
   };
 
-  // Fetch user profile and categories on component mount
   useEffect(() => {
     if (isOpen && userToken) {
       fetchUserProfile();
@@ -185,22 +167,16 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
     }
   }, [isOpen, userToken]);
 
-  // Fetch khandan details when userProfile is loaded
   useEffect(() => {
     if (userProfile && userProfile.khandanid) {
-      fetchKhandanDetails(userProfile.khandanid);
-
+      // fetchKhandanDetails(userProfile.khandanid);
       const prefillAddress = getPrefillAddress();
       if (prefillAddress) {
-        setFormData((prev) => ({
-          ...prev,
-          courierAddress: prefillAddress,
-        }));
+        setFormData((prev) => ({ ...prev, courierAddress: prefillAddress }));
       }
     }
   }, [userProfile]);
 
-  // Recalculate totals when donation items or willCome changes
   useEffect(() => {
     calculateTotals();
   }, [
@@ -209,34 +185,21 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
     courierCharges,
     userProfile,
     formData.courierAddress,
-  ]); // Add courierCharges and userProfile
-
-  const capitalizeEachWord = (str) => {
-    if (!str) return ""; // Handle empty or null strings
-    return str
-      .split(" ")
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(" ");
-  };
+  ]);
 
   const isUserInManpurArea = () => {
     if (!userProfile?.address?.currlocation) return false;
-
     const location = userProfile.address.currlocation.toLowerCase();
-    console.log(location);
-    console.log(location.includes("gaya") && location.includes("manpur"));
     return (
       location.includes("manpur") ||
       (location.includes("gaya") && location.includes("manpur"))
     );
   };
+
   const getPrefillAddress = () => {
     if (!userProfile?.address) return "";
-
     const address = userProfile.address;
     const addressParts = [];
-    console.log(address);
-    // Add address fields in order, excluding currlocation
     if (address.room) addressParts.push("Room: " + address.room);
     if (address.floor) addressParts.push("Floor: " + address.floor);
     if (address.apartment) addressParts.push(address.apartment);
@@ -249,108 +212,74 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
     if (address.state) addressParts.push(address.state);
     if (address.country) addressParts.push(address.country);
     if (address.pin) addressParts.push(address.pin);
-
     return addressParts.join(", ");
   };
 
   const getCourierChargeForUser = () => {
-    if (!formData.courierAddress || courierCharges.length === 0) {
-      console.log("Default Fallback, returning 600");
-      return 600; // Default fallback if address is empty
-    }
+    if (!formData.courierAddress || courierCharges.length === 0) return 600;
     const location = formData.courierAddress.toLowerCase();
-    console.log("Fetched Location: ", location);
-    // Check if user is in Manpur (no courier charge)
-    if (location.includes("manpur")) {
-      console.log("Location includes manpur 0");
-      return 0;
-    }
-
-    // Check if user is in Gaya but outside Manpur
-    if (location.includes("gaya") && location.includes("manpur")) {
-      const gayaCharge = courierCharges.find(
-        (charge) => charge.region === "in_gaya_outside_manpur"
+    if (location.includes("manpur")) return 0;
+    if (location.includes("gaya")) {
+      const charge = courierCharges.find(
+        (c) => c.region === "in_gaya_outside_manpur"
       );
-      console.log("Gaya Charge: ", gayaCharge);
-      return gayaCharge ? gayaCharge.amount : 600;
+      return charge ? charge.amount : 600;
     }
-
-    // Check if user is in Bihar but outside Gaya
-    if (location.includes("bihar") && location.includes("gaya")) {
-      const biharCharge = courierCharges.find(
-        (charge) => charge.region === "in_bihar_outside_gaya"
+    if (location.includes("bihar")) {
+      const charge = courierCharges.find(
+        (c) => c.region === "in_bihar_outside_gaya"
       );
-      console.log("Bihar Charge: ", biharCharge);
-      return biharCharge ? biharCharge.amount : 600;
+      return charge ? charge.amount : 600;
     }
-
-    const isInIndia = location.includes("india") && location.includes("bihar");
-
-    if (isInIndia) {
-      const indiaCharge = courierCharges.find(
-        (charge) => charge.region === "in_india_outside_bihar"
+    if (location.includes("india")) {
+      const charge = courierCharges.find(
+        (c) => c.region === "in_india_outside_bihar"
       );
-      console.log("isInIndia: ", indiaCharge);
-      return indiaCharge ? indiaCharge.amount : 600;
+      return charge ? charge.amount : 600;
     }
-
-    // Outside India
-    const outsideIndiaCharge = courierCharges.find(
-      (charge) => charge.region === "outside_india"
-    );
-    console.log("Outside india: ", outsideIndiaCharge);
-    return outsideIndiaCharge ? outsideIndiaCharge.amount : 600;
+    const charge = courierCharges.find((c) => c.region === "outside_india");
+    return charge ? charge.amount : 600;
   };
 
   const fetchUserProfile = async () => {
     try {
       const response = await fetch(`${backendUrl}/api/user/get-profile`, {
-        headers: {
-          utoken: userToken,
-        },
+        headers: { utoken: userToken },
       });
-
       if (response.ok) {
         const data = await response.json();
-        console.log(data);
         setUserProfile(data.userData);
       } else {
         throw new Error("Failed to fetch user profile");
       }
     } catch (error) {
       console.error("Error fetching user profile:", error);
-      alert("Error fetching user profile. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchKhandanDetails = async (khandanId) => {
-    try {
-      const response = await fetch(
-        `${backendUrl}/api/khandan/get-khandan/${khandanId}`
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log(data);
-        setKhandanDetails(data.khandan);
-      } else {
-        console.error("Failed to fetch khandan details");
-      }
-    } catch (error) {
-      console.error("Error fetching khandan details:", error);
-    }
-  };
+  // const fetchKhandanDetails = async (khandanId) => {
+  //   try {
+  //     const response = await fetch(
+  //       `${backendUrl}/api/khandan/get-khandan/${khandanId}`
+  //     );
+  //     if (response.ok) {
+  //       const data = await response.json();
+  //       setKhandanDetails(data.khandan);
+  //     } else {
+  //       console.error("Failed to fetch khandan details");
+  //     }
+  //   } catch (error) {
+  //     console.error("Error fetching khandan details:", error);
+  //   }
+  // };
 
   const fetchCategories = async () => {
     try {
       const response = await fetch(`${backendUrl}/api/user/categories`, {
-        headers: {
-          userToken,
-        },
+        headers: { utoken: userToken },
       });
-
       if (response.ok) {
         const data = await response.json();
         setCategories(data.categories);
@@ -359,42 +288,31 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
       }
     } catch (error) {
       console.error("Error fetching categories:", error);
-      alert("Error fetching categories. Please try again.");
     }
   };
 
-  // Get available categories for a specific donation item
   const getAvailableCategories = (currentIndex) => {
     const selectedCategoryIds = formData.donationItems
       .map((item, index) => (index !== currentIndex ? item.categoryId : null))
       .filter(Boolean);
-
     return categories.filter(
       (category) => !selectedCategoryIds.includes(category._id)
     );
   };
 
   const calculateTotals = () => {
-    const totalAmount = formData.donationItems.reduce((sum, item) => {
-      return sum + (parseFloat(item.rate) || 0);
-    }, 0);
-
+    const totalAmount = formData.donationItems.reduce(
+      (sum, item) => sum + (parseFloat(item.rate) || 0),
+      0
+    );
     const courierCharge =
       formData.willCome === "NO" ? getCourierChargeForUser() : 0;
     const netPayable = totalAmount + courierCharge;
-
-    setTotals({
-      totalAmount,
-      courierCharge,
-      netPayable,
-    });
+    setTotals({ totalAmount, courierCharge, netPayable });
   };
 
   const handleInputChange = (field, value) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
+    setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleDonationItemChange = (index, field, value) => {
@@ -403,66 +321,52 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
 
     if (field === "categoryId") {
       const selectedCategory = categories.find((cat) => cat._id === value);
-      console.log("Selected Category: ", selectedCategory);
+      if (!selectedCategory) return;
 
-      if (selectedCategory) {
-        item.categoryId = value;
-        item.category = selectedCategory.categoryName;
-        item.unitAmount = selectedCategory.rate || 0;
-        item.isPacketBased = selectedCategory.packet || false;
-
-        // Reset quantity to 1 when category changes
-        item.quantity = 1; // Set unit values based on category type
-
-        if (item.isPacketBased) {
-          // For packet-based items: weight is 0, packet count is always 1 per item
-          item.unitWeight = 0;
-          item.unitPacket = 1;
-        } else {
-          // For weight-based items: packet is 0, weight from category
-          item.unitWeight = selectedCategory.weight || 0;
-          item.unitPacket = 0;
-        } // Calculate totals based on quantity
-
-        const quantity = parseInt(item.quantity) || 1;
-
-        if (item.isPacketBased) {
-          // For packet-based: rate is per packet (quantity = number of packets)
-          item.rate = item.unitAmount * quantity;
-          item.weight = 0; // Always 0 for packet-based
-          item.packet = quantity; // Each quantity unit is 1 packet
-        } else {
-          // For weight-based: rate and weight scale with quantity
-          item.rate = item.unitAmount * quantity;
-          item.weight = item.unitWeight * quantity;
-          item.packet = 0; // Always 0 for weight-based
-        }
-      }
-      console.log("Updated item: ", item);
-    } else if (field === "quantity") {
-      const quantity = parseInt(value) || 1;
-      item.quantity = quantity;
+      item.categoryId = value;
+      item.category = selectedCategory.categoryName;
+      item.unitAmount = selectedCategory.rate || 0;
+      item.isPacketBased = selectedCategory.packet || false;
+      item.isDynamic = selectedCategory.dynamic?.isDynamic || false;
+      item.minvalue = selectedCategory.dynamic?.minvalue || 0;
+      item.quantity = 1;
 
       if (item.isPacketBased) {
-        // For packet-based items
-        item.rate = item.unitAmount * quantity;
-        item.weight = 0; // Always 0 for packet-based
-        item.packet = quantity; // Each quantity unit is 1 packet
+        item.unitWeight = 0;
+        item.unitPacket = 1;
       } else {
-        // For weight-based items
-        item.rate = item.unitAmount * quantity;
-        item.weight = item.unitWeight * quantity;
-        item.packet = 0; // Always 0 for weight-based
+        item.unitWeight = selectedCategory.weight || 0;
+        item.unitPacket = 0;
       }
-    } else {
-      item[field] = value;
+
+      item.rate = item.unitAmount;
+      if (item.isDynamic) {
+        item.weight =
+          item.rate < item.unitAmount ? item.minvalue : item.unitWeight;
+        item.packet = 0;
+      } else {
+        item.weight = item.unitWeight * item.quantity;
+        item.packet = item.unitPacket * item.quantity;
+      }
+    } else if (field === "quantity" && !item.isDynamic) {
+      const quantity = parseInt(value) >= 1 ? parseInt(value) : 1;
+      item.quantity = quantity;
+      item.rate = item.unitAmount * quantity;
+      item.weight = item.unitWeight * quantity;
+      item.packet = item.unitPacket * quantity;
+    } else if (field === "rate" && item.isDynamic) {
+      const newAmount = parseFloat(value) || 0;
+      item.rate = newAmount;
+      if (newAmount < item.unitAmount) {
+        item.weight = item.minvalue;
+      } else {
+        item.weight = Math.floor(newAmount / item.unitAmount) * item.unitWeight;
+      }
+      item.packet = 0;
     }
 
     updatedItems[index] = item;
-    setFormData((prev) => ({
-      ...prev,
-      donationItems: updatedItems,
-    }));
+    setFormData((prev) => ({ ...prev, donationItems: updatedItems }));
   };
 
   const addDonationItem = () => {
@@ -481,6 +385,8 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
           unitWeight: 0,
           unitPacket: 0,
           isPacketBased: false,
+          isDynamic: false,
+          minvalue: 0,
         },
       ],
     }));
@@ -489,23 +395,16 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
   const removeDonationItem = (index) => {
     if (formData.donationItems.length > 1) {
       const updatedItems = formData.donationItems.filter((_, i) => i !== index);
-      setFormData((prev) => ({
-        ...prev,
-        donationItems: updatedItems,
-      }));
+      setFormData((prev) => ({ ...prev, donationItems: updatedItems }));
     }
   };
 
   const handleRazorpayPayment = async (order, donationId) => {
     const isScriptLoaded = await loadRazorpayScript();
-
     if (!isScriptLoaded) {
-      alert(
-        "Razorpay SDK failed to load. Please check your internet connection."
-      );
+      alert("Razorpay SDK failed to load.");
       return;
     }
-
     const options = {
       key: import.meta.env.VITE_RAZORPAY_KEY_ID,
       amount: order.amount,
@@ -516,37 +415,27 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
       handler: async (response) => {
         try {
           setSubmitting(true);
-
-          // Verify payment
           const verifyResponse = await fetch(
             `${backendUrl}/api/user/verify-donation-payment`,
             {
               method: "POST",
               headers: {
-                utoken: userToken,
                 "Content-Type": "application/json",
+                utoken: userToken,
               },
-              body: JSON.stringify({
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-                donationId: donationId,
-              }),
+              body: JSON.stringify({ ...response, donationId }),
             }
           );
-
           const verifyResult = await verifyResponse.json();
-
           if (verifyResult.success) {
-            alert("Payment successful! Your donation has been recorded.");
+            alert("Payment successful!");
             onClose();
             resetForm();
           } else {
             alert(`Payment verification failed: ${verifyResult.message}`);
           }
         } catch (error) {
-          console.error("Payment verification error:", error);
-          alert("Error verifying payment. Please contact support.");
+          alert("Error verifying payment.");
         } finally {
           setSubmitting(false);
         }
@@ -556,16 +445,9 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
         email: userProfile?.contact?.email || "",
         contact: userProfile?.contact?.mobileno?.number || "",
       },
-      theme: {
-        color: "#EF4444",
-      },
-      modal: {
-        ondismiss: () => {
-          setSubmitting(false);
-        },
-      },
+      theme: { color: "#EF4444" },
+      modal: { ondismiss: () => setSubmitting(false) },
     };
-
     const razorpay = new window.Razorpay(options);
     razorpay.open();
   };
@@ -574,6 +456,8 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
     setFormData({
       willCome: "YES",
       courierAddress: "",
+      paymentMethod: "",
+      remarks: "",
       donationItems: [
         {
           categoryId: "",
@@ -586,42 +470,24 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
           unitWeight: 0,
           unitPacket: 0,
           isPacketBased: false,
+          isDynamic: false,
+          minvalue: 0,
         },
       ],
-      paymentMethod: "",
-      remarks: "",
     });
   };
 
   const handleSubmit = async () => {
-    // Validate form
-    if (!formData.paymentMethod) {
-      alert("Please select a payment method");
-      return;
-    }
-
-    if (formData.donationItems.some((item) => !item.categoryId)) {
-      alert("Please select category for all donation items");
-      return;
-    }
-
-    if (formData.willCome === "NO" && !formData.courierAddress.trim()) {
-      alert("Please provide courier address");
-      return;
-    }
-
-    if (totals.netPayable <= 0) {
-      alert("Please add at least one donation item");
-      return;
-    }
+    if (!formData.paymentMethod) return alert("Please select a payment method");
+    if (formData.donationItems.some((item) => !item.categoryId))
+      return alert("Please select a category for all items");
+    if (formData.willCome === "NO" && !formData.courierAddress.trim())
+      return alert("Please provide a courier address");
+    if (totals.netPayable <= 0)
+      return alert("Donation amount must be greater than zero");
 
     try {
       setSubmitting(true);
-      console.log("userProfile: ", userProfile);
-      console.log("formData: ", formData);
-      console.log("totals: ", totals);
-
-      // Prepare donation data according to backend schema
       const donationData = {
         userId: userProfile._id,
         list: formData.donationItems.map((item) => ({
@@ -641,30 +507,21 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
             : "Will collect from Durga Sthan",
       };
 
-      console.log("Sending donation data:", donationData);
-
       const response = await fetch(
         `${backendUrl}/api/user/create-donation-order`,
         {
           method: "POST",
-          headers: {
-            utoken: userToken,
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json", utoken: userToken },
           body: JSON.stringify(donationData),
         }
       );
 
       if (response.ok) {
         const result = await response.json();
-        console.log("Donation order created:", result);
-
         if (result.success) {
           if (result.paymentRequired && result.order) {
-            // Handle online payment with Razorpay
             await handleRazorpayPayment(result.order, result.donationId);
           } else {
-            // Handle cash payment
             alert("Cash donation recorded successfully!");
             onClose();
             resetForm();
@@ -677,7 +534,6 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
         throw new Error(error.message || "Failed to create donation order");
       }
     } catch (error) {
-      console.error("Error submitting donation:", error);
       alert(`Error submitting donation: ${error.message}`);
     } finally {
       setSubmitting(false);
@@ -700,7 +556,6 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-        {/* Header */}
         <div className="bg-gradient-to-r from-red-500 to-red-600 text-white p-6 rounded-t-2xl relative">
           <button
             onClick={onClose}
@@ -719,22 +574,20 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
         </div>
 
         <div className="p-6 space-y-6">
-          {/* User Information */}
           <div className="space-y-2">
             <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-              <MapPin size={16} className="text-red-500" />
-              Donor Information
+              <MapPin size={16} className="text-red-500" /> Donor Information
             </label>
             <div className="w-full p-3 border border-gray-300 rounded-lg bg-gray-50">
               {userProfile ? (
                 <div className="text-gray-700">
                   <span className="font-medium">{userProfile.fullname}</span>
-                  {khandanDetails && (
-                    <span className="text-gray-500">
-                      {" "}
-                      • W/o {khandanDetails.name}
-                    </span>
-                  )}
+
+                  <span className="text-gray-500">
+                    {" "}
+                    • S/o {userProfile.fatherName}
+                  </span>
+
                   <span className="text-gray-500">
                     {" "}
                     • {userProfile.contact.mobileno.number}
@@ -748,11 +601,9 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
             </div>
           </div>
 
-          {/* Will Come Question */}
           <div className="space-y-3">
             <label className="text-sm font-semibold text-gray-700">
-              Will you come to Durga Sthan, Manpur, Patwatoli to get your
-              Mahaprasad?
+              Will you come to Durga Sthan to get your Mahaprasad?
             </label>
             <div className="flex gap-6">
               <label className="flex items-center gap-2 cursor-pointer">
@@ -788,29 +639,26 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
                   disabled={submitting || isUserInManpurArea()}
                 />
                 <span className="text-sm font-medium text-gray-700">
-                  NO
+                  NO{" "}
                   {isUserInManpurArea() && (
                     <span className="text-xs text-gray-500 ml-1">
-                      (Not available for your location)
+                      (Not available)
                     </span>
                   )}
                 </span>
               </label>
             </div>
-
             {isUserInManpurArea() && (
               <p className="text-xs text-blue-600 bg-blue-50 p-2 rounded">
-                Since you are in the Manpur/Gaya area, you can collect your
-                Mahaprasad directly from Durga Sthan.
+                You can collect your Mahaprasad directly from Durga Sthan.
               </p>
             )}
           </div>
 
-          {/* Courier Address */}
           {formData.willCome === "NO" && (
             <div className="space-y-2">
               <label className="text-sm font-semibold text-gray-700">
-                Courier/Postal Address for Mahaprasad
+                Courier/Postal Address
               </label>
               <textarea
                 value={formData.courierAddress}
@@ -818,104 +666,18 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
                   handleInputChange("courierAddress", e.target.value)
                 }
                 placeholder="Please write your complete courier/postal address..."
-                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all duration-200 resize-none"
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 resize-none"
                 rows="3"
                 required={formData.willCome === "NO"}
                 disabled={submitting}
               />
               <p className="text-xs text-blue-600 bg-blue-50 p-2 rounded-md">
-                Please confirm your address. If it is incorrect, you can update
-                it directly here. The courier charge will be calculated based on
-                this address.
+                Please confirm your address. The courier charge will be
+                calculated based on this address.
               </p>
             </div>
           )}
-          {/* Previous Donations */}
-          {previousDonations.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 mb-3">
-                <Clock className="text-blue-500" size={18} />
-                <h3 className="text-lg font-semibold text-gray-800">
-                  Your Recent Donations
-                </h3>
-              </div>
 
-              <div className="space-y-3">
-                {previousDonations.map((donation, index) => (
-                  <div
-                    key={donation._id}
-                    className="bg-blue-50 border border-blue-200 p-4 rounded-lg"
-                  >
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-blue-800">
-                          {index === 0 ? "Latest" : "Previous"} Donation
-                        </span>
-                        <span className="text-xs text-gray-500">
-                          {new Date(donation.date).toLocaleDateString("en-IN", {
-                            day: "2-digit",
-                            month: "short",
-                            year: "numeric",
-                          })}
-                        </span>
-                      </div>
-                      <span className="text-lg font-bold text-blue-900">
-                        ₹{donation.amount.toLocaleString()}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                      {donation.list.map((item, itemIndex) => (
-                        <div
-                          key={itemIndex}
-                          className="bg-white p-2 rounded border"
-                        >
-                          <div className="flex justify-between items-center">
-                            <div>
-                              <p className="text-sm font-medium text-gray-800 truncate">
-                                {item.category}
-                              </p>
-                              <p className="text-xs text-gray-600">
-                                Qty: {item.quantity || item.number}
-                                {item.isPacket > 0 && (
-                                  <span className="ml-1 text-xs bg-orange-100 text-orange-800 px-1 rounded">
-                                    Packets
-                                  </span>
-                                )}
-                              </p>
-                            </div>
-                            <span className="text-sm font-semibold text-gray-900">
-                              ₹{item.amount}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="mt-2 pt-2 border-t border-blue-200 flex justify-between text-xs text-gray-600">
-                      <span>Method: {donation.method}</span>
-                      {donation.courierCharge > 0 && (
-                        <span>Courier: ₹{donation.courierCharge}</span>
-                      )}
-                      <span className="font-medium">
-                        Total: ₹
-                        {(
-                          donation.amount + (donation.courierCharge || 0)
-                        ).toLocaleString()}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="text-center">
-                <div className="inline-block h-px w-16 bg-gray-300"></div>
-                <span className="px-3 text-xs text-gray-500">New Donation</span>
-                <div className="inline-block h-px w-16 bg-gray-300"></div>
-              </div>
-            </div>
-          )}
-          {/* Donation Details */}
           <div className="space-y-4">
             <div className="flex items-center gap-2 mb-4">
               <Package className="text-red-500" size={20} />
@@ -923,24 +685,12 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
                 Donation Details
               </h3>
             </div>
-
-            {/* Donation Items */}
             <div className="space-y-4">
               {formData.donationItems.map((item, index) => (
                 <div key={index} className="bg-gray-50 p-4 rounded-lg border">
                   <div className="flex justify-between items-center mb-3">
                     <span className="font-medium text-gray-700">
                       Item {index + 1}
-                      {item.isPacketBased && (
-                        <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                          Packet-based
-                        </span>
-                      )}
-                      {!item.isPacketBased && item.categoryId && (
-                        <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
-                          Weight-based
-                        </span>
-                      )}
                     </span>
                     {formData.donationItems.length > 1 && (
                       <button
@@ -953,9 +703,8 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
                       </button>
                     )}
                   </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
-                    <div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div className="lg:col-span-1">
                       <label className="block text-xs font-medium text-gray-600 mb-1">
                         Category
                       </label>
@@ -968,7 +717,7 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
                             e.target.value
                           )
                         }
-                        className="w-full p-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                        className="w-full p-2 text-sm border border-gray-300 rounded"
                         required
                         disabled={submitting}
                       >
@@ -981,100 +730,83 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
                       </select>
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Quantity {item.isPacketBased ? "(Jobs)" : "(Units)"}
-                      </label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={item.quantity}
-                        onChange={(e) =>
-                          handleDonationItemChange(
-                            index,
-                            "quantity",
-                            e.target.value
-                          )
-                        }
-                        className="w-full p-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                        placeholder="Qty"
-                        required
-                        disabled={item.isPacketBased || submitting}
-                      />
-                    </div>
+                    {!item.isDynamic && (
+                      <div className="lg:col-span-1">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">
+                          Quantity
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={item.quantity}
+                          onChange={(e) =>
+                            handleDonationItemChange(
+                              index,
+                              "quantity",
+                              e.target.value
+                            )
+                          }
+                          className={`w-full p-2 text-sm border border-gray-300 rounded ${
+                            item.isPacketBased &&
+                            "bg-gray-100 cursor-not-allowed"
+                          }`}
+                          placeholder="Qty"
+                          required
+                          disabled={item.isPacketBased || submitting}
+                        />
+                      </div>
+                    )}
 
-                    <div>
+                    <div className="lg:col-span-1">
                       <label className="block text-xs font-medium text-gray-600 mb-1">
                         Amount (₹)
                       </label>
                       <input
                         type="number"
                         value={item.rate}
-                        className="w-full p-2 text-sm border border-gray-300 rounded bg-gray-100 cursor-not-allowed"
+                        onChange={(e) =>
+                          handleDonationItemChange(
+                            index,
+                            "rate",
+                            e.target.value
+                          )
+                        }
+                        className={`w-full p-2 text-sm border border-gray-300 rounded ${
+                          !item.isDynamic && "bg-gray-100 cursor-not-allowed"
+                        }`}
                         placeholder="Amount"
-                        readOnly
+                        readOnly={!item.isDynamic}
+                        disabled={submitting}
                       />
                     </div>
 
-                    <div>
+                    <div className="lg:col-span-1">
                       <label className="block text-xs font-medium text-gray-600 mb-1">
                         Weight (g)
                       </label>
                       <input
                         type="number"
-                        value={item.weight}
+                        value={item.weight.toFixed(2)}
                         className="w-full p-2 text-sm border border-gray-300 rounded bg-gray-100 cursor-not-allowed"
-                        placeholder={item.isPacketBased ? "N/A" : "Weight"}
-                        readOnly
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Packets
-                      </label>
-                      <input
-                        type="number"
-                        value={item.packet}
-                        className="w-full p-2 text-sm border border-gray-300 rounded bg-gray-100 cursor-not-allowed"
-                        placeholder={item.isPacketBased ? "Packets" : "N/A"}
+                        placeholder="Weight"
                         readOnly
                       />
                     </div>
                   </div>
                 </div>
               ))}
-
               <button
                 type="button"
                 onClick={addDonationItem}
-                className="w-full p-3 border-2 border-dashed border-red-300 text-red-600 rounded-lg hover:border-red-500 hover:bg-red-50 transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full p-3 border-2 border-dashed border-red-300 text-red-600 rounded-lg hover:bg-red-50 flex items-center justify-center gap-2"
                 disabled={submitting}
               >
-                <Plus size={20} />
-                Add More Items
+                <Plus size={20} /> Add More Items
               </button>
             </div>
           </div>
 
-          {/* Remarks */}
-          <div className="space-y-2">
-            <label className="text-sm font-semibold text-gray-700">
-              Remarks (Optional)
-            </label>
-            <textarea
-              value={formData.remarks}
-              onChange={(e) => handleInputChange("remarks", e.target.value)}
-              placeholder="Any additional comments or special instructions..."
-              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all duration-200 resize-none"
-              rows="2"
-              disabled={submitting}
-            />
-          </div>
-
-          {/* Summary Section */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Mahaprasad Details */}
             <div className="bg-gray-50 p-4 rounded-lg">
               <h4 className="font-semibold text-gray-800 mb-3">
                 Mahaprasad Details
@@ -1103,8 +835,6 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
                 </div>
               </div>
             </div>
-
-            {/* Donation Summary */}
             <div className="bg-red-50 p-4 rounded-lg border border-red-200">
               <h4 className="font-semibold text-gray-800 mb-3">
                 Donation Summary
@@ -1128,30 +858,20 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
                     ₹{totals.netPayable.toFixed(2)}
                   </span>
                 </div>
-                <div className="mt-3 pt-2 border-t border-red-200">
-                  <p className="text-xs text-gray-600 font-medium mb-1">
-                    Amount in Words:
-                  </p>
-                  <p className="text-sm text-gray-800 font-medium capitalize leading-relaxed">
-                    {convertAmountToWords(totals.netPayable)}
-                  </p>
-                </div>
               </div>
             </div>
           </div>
 
-          {/* Payment Method */}
           <div className="space-y-2">
             <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-              <CreditCard size={16} className="text-red-500" />
-              Payment Method
+              <CreditCard size={16} className="text-red-500" /> Payment Method
             </label>
             <select
               value={formData.paymentMethod}
               onChange={(e) =>
                 handleInputChange("paymentMethod", e.target.value)
               }
-              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all duration-200"
+              className="w-full p-3 border border-gray-300 rounded-lg"
               required
               disabled={submitting}
             >
@@ -1166,12 +886,11 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
             </select>
           </div>
 
-          {/* Submit Button */}
           <div className="flex gap-4 pt-4">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-3 px-6 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-all duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 py-3 px-6 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
               disabled={submitting}
             >
               Cancel
@@ -1179,12 +898,12 @@ const DonationModal = ({ isOpen, onClose, backendUrl, userToken }) => {
             <button
               type="button"
               onClick={handleSubmit}
-              className="flex-1 py-3 px-6 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:from-red-600 hover:to-red-700 transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+              className="flex-1 py-3 px-6 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:from-red-600 hover:to-red-700 shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
               disabled={submitting}
             >
               {submitting ? (
                 <div className="flex items-center justify-center gap-2">
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>{" "}
                   Processing...
                 </div>
               ) : (

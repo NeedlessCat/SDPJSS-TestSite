@@ -11,7 +11,7 @@ import {
   Users,
   Trash2,
   Clock,
-  Scissors, // Using lucide-react for the scissor icon
+  Scissors,
 } from "lucide-react";
 import axios from "axios";
 import { AdminContext } from "../context/AdminContext";
@@ -54,7 +54,6 @@ const toWords = (num) => {
     "Eighty",
     "Ninety",
   ];
-
   const numToWords = (n) => {
     let word = "";
     if (n === 0) return word;
@@ -66,24 +65,20 @@ const toWords = (num) => {
     }
     return word;
   };
-
   const number = Math.round(num);
   if (number === 0) return "Zero Rupees Only";
   if (number > 999999999) return "Number is too large";
-
   let result = "";
   const crore = Math.floor(number / 10000000);
   const lakh = Math.floor((number % 10000000) / 100000);
   const thousand = Math.floor((number % 100000) / 1000);
   const hundred = Math.floor((number % 1000) / 100);
   const rest = number % 100;
-
   if (crore) result += numToWords(crore) + " Crore ";
   if (lakh) result += numToWords(lakh) + " Lakh ";
   if (thousand) result += numToWords(thousand) + " Thousand ";
   if (hundred) result += numToWords(hundred) + " Hundred ";
   if (rest) result += numToWords(rest);
-
   return result.trim().replace(/\s+/g, " ") + " Rupees Only";
 };
 
@@ -378,9 +373,6 @@ const ReceiptTemplate = ({
           >
             SHREE DURGAJI PATWAY JATI SUDHAR SAMITI
           </div>
-          {/* <div style={{ fontSize: "12px", color: "#666", marginBottom: "1px" }}>
-            
-          </div> */}
           <div style={{ marginBottom: "1px", fontSize: "14px" }}>
             Shree Durga Sthan, Patwatoli, Manpur, P.O. Buniyadganj, Gaya Ji -
             823003
@@ -1072,22 +1064,18 @@ const GuestReceipt = () => {
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
   const [receiptTotals, setReceiptTotals] = useState(null);
-
   const [donationType, setDonationType] = useState("individual");
   const [groupDonations, setGroupDonations] = useState([]);
   const [totalGroupAmount, setTotalGroupAmount] = useState(0);
   const [isPayingGroup, setIsPayingGroup] = useState(false);
   const [groupPaymentMethod, setGroupPaymentMethod] = useState("Cash");
-
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [selectedDonor, setSelectedDonor] = useState(null);
-
   const [previousDonations, setPreviousDonations] = useState([]);
   const [isFetchingPreviousDonations, setIsFetchingPreviousDonations] =
     useState(false);
-
   const [showNewDonorForm, setShowNewDonorForm] = useState(true);
   const [donorInfo, setDonorInfo] = useState({
     fullname: "",
@@ -1101,11 +1089,11 @@ const GuestReceipt = () => {
       country: "India",
     },
   });
-
   const [allCategories, setAllCategories] = useState([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
   const [selectedCategoryDetails, setSelectedCategoryDetails] = useState(null);
   const [quantity, setQuantity] = useState(1);
+  const [dynamicAmount, setDynamicAmount] = useState(""); // State for dynamic amount input
   const [donations, setDonations] = useState([]);
   const [paymentMethod, setPaymentMethod] = useState("Cash");
   const [remarks, setRemarks] = useState("");
@@ -1156,20 +1144,25 @@ const GuestReceipt = () => {
     setShowDropdown(filtered.length > 0);
   }, [searchQuery, guestUserList]);
 
+  // ** UPDATED useEffect to handle dynamic categories **
   useEffect(() => {
     if (selectedCategoryId) {
       const details = allCategories.find((c) => c._id === selectedCategoryId);
       setSelectedCategoryDetails(details);
-      if (details?.categoryType === "Service") {
-        setQuantity(1);
+      if (details?.dynamic?.isDynamic) {
+        setDynamicAmount(details.rate.toString()); // Pre-fill with base rate
+        setQuantity(1); // Lock quantity for dynamic items
       } else {
-        setQuantity("");
+        setDynamicAmount(""); // Clear dynamic amount for standard items
+        setQuantity(1); // Reset quantity for standard items
       }
     } else {
       setSelectedCategoryDetails(null);
       setQuantity(1);
+      setDynamicAmount("");
     }
   }, [selectedCategoryId, allCategories]);
+
   const availableCategories = useMemo(() => {
     const donatedCategoryNames = donations.map((d) => d.category);
     return allCategories.filter(
@@ -1177,29 +1170,27 @@ const GuestReceipt = () => {
     );
   }, [allCategories, donations]);
 
-  const { totalAmount, totalWeight, totalPackets, totalItems } = useMemo(() => {
+  const { totalAmount, totalWeight, totalPackets } = useMemo(() => {
     const result = donations.reduce(
       (acc, d) => {
         acc.amount += d.amount;
-        acc.weight += d.quantity;
-        acc.packets += d.isPacket ? d.number : 0;
-        acc.items += d.number;
+        acc.weight += d.quantity; // 'quantity' in donation list is weight
+        acc.packets += d.isPacket ? d.number : 0; // 'number' is the item count
         return acc;
       },
-      { amount: 0, weight: 0, packets: 0, items: 0 }
+      { amount: 0, weight: 0, packets: 0 }
     );
     return {
       totalAmount: result.amount,
       totalWeight: result.weight,
       totalPackets: result.packets,
-      totalItems: result.items,
     };
   }, [donations]);
 
-  const finalAmount = totalAmount + courierCharge;
-  const calculatedAmount = selectedCategoryDetails
-    ? selectedCategoryDetails.rate * (Number(quantity) || 0)
-    : 0;
+  const calculatedAmountForStandard =
+    selectedCategoryDetails && !selectedCategoryDetails.dynamic?.isDynamic
+      ? selectedCategoryDetails.rate * (Number(quantity) || 0)
+      : 0;
 
   const handleMobileChange = (e) => {
     const value = e.target.value.replace(/\D/g, ""); // Remove non-digits
@@ -1236,25 +1227,62 @@ const GuestReceipt = () => {
     }
   };
 
+  // ** UPDATED handleAddDonation function **
   const handleAddDonation = () => {
-    if (!selectedCategoryId || !quantity || parseInt(quantity, 10) < 1) {
-      toast.warn("Please select a category and enter a valid quantity.");
+    if (!selectedCategoryId) {
+      toast.warn("Please select a category.");
       return;
     }
 
-    const newDonation = {
-      id: Date.now(),
-      category: selectedCategoryDetails.categoryName,
-      number: parseInt(quantity, 10),
-      amount: calculatedAmount,
-      isPacket: selectedCategoryDetails.packet,
-      quantity: selectedCategoryDetails.weight * parseInt(quantity, 10),
-    };
+    const isDynamic = selectedCategoryDetails.dynamic?.isDynamic;
+    let newDonation;
+
+    if (isDynamic) {
+      const amount = Number(dynamicAmount) || 0;
+      if (amount <= 0) {
+        toast.warn("Please enter a valid amount for the dynamic donation.");
+        return;
+      }
+      let weight = 0;
+      if (amount < selectedCategoryDetails.rate) {
+        weight = selectedCategoryDetails.dynamic.minvalue;
+      } else {
+        weight =
+          Math.floor(amount / selectedCategoryDetails.rate) *
+          selectedCategoryDetails.weight;
+      }
+      newDonation = {
+        id: Date.now(),
+        category: selectedCategoryDetails.categoryName,
+        number: 1, // Quantity is always 1 for dynamic items
+        amount: amount,
+        isPacket: false, // Dynamic items are weight-based
+        quantity: weight, // 'quantity' field holds the calculated weight
+      };
+    } else {
+      // Standard donation logic
+      if (!quantity || parseInt(quantity, 10) < 1) {
+        toast.warn("Please enter a valid quantity.");
+        return;
+      }
+      const calculatedAmount =
+        selectedCategoryDetails.rate * parseInt(quantity, 10);
+      newDonation = {
+        id: Date.now(),
+        category: selectedCategoryDetails.categoryName,
+        number: parseInt(quantity, 10),
+        amount: calculatedAmount,
+        isPacket: selectedCategoryDetails.packet,
+        quantity: selectedCategoryDetails.weight * parseInt(quantity, 10),
+      };
+    }
 
     setDonations([...donations, newDonation]);
+    // Reset form fields after adding
     setSelectedCategoryId("");
     setSelectedCategoryDetails(null);
     setQuantity(1);
+    setDynamicAmount("");
   };
 
   const removeDonation = (id) => {
@@ -1283,6 +1311,7 @@ const GuestReceipt = () => {
     setRemarks("");
     setSelectedCategoryId("");
     setQuantity(1);
+    setDynamicAmount("");
     setPreviousDonations([]);
   };
 
@@ -1490,7 +1519,6 @@ const GuestReceipt = () => {
           totals={receiptTotals}
         />
       )}
-
       <div className="p-4 md:p-6 bg-gray-50 min-h-screen">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
           <h1 className="text-2xl md:text-3xl font-bold text-gray-800">
@@ -1505,8 +1533,7 @@ const GuestReceipt = () => {
                   : "text-gray-600 hover:bg-gray-300"
               }`}
             >
-              {" "}
-              Individual{" "}
+              Individual
             </button>
             <button
               onClick={() => setDonationType("group")}
@@ -1516,8 +1543,7 @@ const GuestReceipt = () => {
                   : "text-gray-600 hover:bg-gray-300"
               }`}
             >
-              {" "}
-              Group{" "}
+              Group
             </button>
           </div>
         </div>
@@ -1767,6 +1793,7 @@ const GuestReceipt = () => {
             <h2 className="text-xl font-semibold text-gray-700 mb-3">
               2. Add Donation Items
             </h2>
+            {/* ** UPDATED JSX for Donation Form ** */}
             <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end bg-gray-50 p-4 rounded-lg">
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1785,32 +1812,59 @@ const GuestReceipt = () => {
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Quantity
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  placeholder="Qty"
-                  className="w-full px-3 py-2 border rounded-lg"
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                  disabled={selectedCategoryDetails?.categoryType === "Service"}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Amount (₹)
-                </label>
-                <input
-                  type="text"
-                  placeholder="Amount"
-                  className="w-full px-3 py-2 border rounded-lg bg-gray-200"
-                  value={calculatedAmount.toLocaleString("en-IN")}
-                  disabled
-                />
-              </div>
+
+              {selectedCategoryDetails?.dynamic?.isDynamic ? (
+                // DYNAMIC CATEGORY VIEW
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Amount (₹)
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="Enter custom amount"
+                    className="w-full px-3 py-2 border rounded-lg"
+                    value={dynamicAmount}
+                    onChange={(e) => setDynamicAmount(e.target.value)}
+                    disabled={!selectedCategoryDetails}
+                  />
+                </div>
+              ) : (
+                // STANDARD CATEGORY VIEW
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Quantity
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="Qty"
+                      className="w-full px-3 py-2 border rounded-lg"
+                      value={quantity}
+                      onChange={(e) => setQuantity(e.target.value)}
+                      disabled={
+                        !selectedCategoryDetails ||
+                        selectedCategoryDetails.packet
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Amount (₹)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Amount"
+                      className="w-full px-3 py-2 border rounded-lg bg-gray-200"
+                      value={calculatedAmountForStandard.toLocaleString(
+                        "en-IN"
+                      )}
+                      disabled
+                    />
+                  </div>
+                </>
+              )}
+
               <button
                 onClick={handleAddDonation}
                 className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-indigo-700 disabled:bg-indigo-300 flex items-center justify-center gap-2 h-10"
@@ -1818,6 +1872,7 @@ const GuestReceipt = () => {
                 <Plus size={18} /> Add
               </button>
             </div>
+
             {selectedCategoryDetails && (
               <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 text-sm text-yellow-800 rounded-lg">
                 <div className="pl-1 pb-1">
@@ -1925,7 +1980,9 @@ const GuestReceipt = () => {
                   <hr className="my-1 border-green-200" />
                   <p className="font-bold flex justify-between">
                     Grand Total:{" "}
-                    <span>₹{finalAmount.toLocaleString("en-IN")}</span>
+                    <span>
+                      ₹{(totalAmount + courierCharge).toLocaleString("en-IN")}
+                    </span>
                   </p>
                 </div>
               </div>
