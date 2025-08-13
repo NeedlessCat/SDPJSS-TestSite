@@ -2212,7 +2212,7 @@ const sendDonationReceiptEmail = async (email, donationData, userData) => {
 
     // Generate PDF using Puppeteer
     const browser = await puppeteer.launch({
-      headless: "new",
+      headless: true,
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
 
