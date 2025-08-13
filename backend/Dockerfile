@@ -13,7 +13,7 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     RAZORPAY_KEY_SECRET=RRtB0yiG3QYypL6dH7dozI7C \
     CURRENCY=INR \
     EMAIL_USER=kumar29.aayush@gmail.com \
-    EMAIL_PASSWORD=rkzw fcpt nmrl crxv
+    EMAIL_PASSWORD="rkzw fcpt nmrl crxv"
 
 WORKDIR /usr/src/app
 
