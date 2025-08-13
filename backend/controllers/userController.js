@@ -2213,6 +2213,10 @@ const sendDonationReceiptEmail = async (email, donationData, userData) => {
     // Generate PDF using Puppeteer
     const browser = await puppeteer.launch({
       headless: true,
+      executablePath:
+        process.env.NODE_ENV === "production"
+          ? process.env.PUPPETEER_EXECTUABLE_PATH
+          : puppeteer.executablePath(),
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
 
