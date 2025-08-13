@@ -5,7 +5,7 @@ import nodemailer from "nodemailer";
 import jwt from "jsonwebtoken";
 import { v2 as cloudinary } from "cloudinary";
 import razorpay from "razorpay";
-import puppeteer from "puppeteer";
+import html_to_pdf from "html-pdf-node";
 
 import userModel from "../models/UserModel.js";
 import jobOpeningModel from "../models/JobOpeningModel.js";
@@ -2211,15 +2211,7 @@ const sendDonationReceiptEmail = async (email, donationData, userData) => {
     const billHTML = generateBillHTML(donationData, userData);
 
     // Generate PDF using Puppeteer
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    });
-
-    const page = await browser.newPage();
-    await page.setContent(billHTML, { waitUntil: "networkidle0" });
-
-    const pdfBuffer = await page.pdf({
+    const options = {
       format: "A4",
       printBackground: true,
       margin: {
@@ -2228,9 +2220,10 @@ const sendDonationReceiptEmail = async (email, donationData, userData) => {
         bottom: "20px",
         left: "20px",
       },
-    });
+    }; // Define the file object with the HTML content
+    const file = { content: billHTML }; // Generate PDF buffer using html-pdf-node
 
-    await browser.close();
+    const pdfBuffer = await html_to_pdf.generatePdf(file, options);
 
     // Configure nodemailer transporter
     const transporter = nodemailer.createTransport({
