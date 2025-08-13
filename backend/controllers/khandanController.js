@@ -1,4 +1,4 @@
-import khandanModel from "../models/khandanModel.js";
+import khandanModel from "../models/KhandanModel.js";
 
 // Helper function to generate next khandanid
 const generateNextKhandanId = async () => {
