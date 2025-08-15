@@ -253,6 +253,7 @@ const registerUser = async (req, res) => {
     console.log(req.body);
     const {
       fullname: rawFullname,
+      fatherid,
       fatherName: rawFatherName,
       mother: rawMother,
       gender,
