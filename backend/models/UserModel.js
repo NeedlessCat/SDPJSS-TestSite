@@ -42,7 +42,8 @@ const userSchema = new mongoose.Schema(
     },
     password: {
       type: String,
-      default: "qwerty123",
+      required: false,
+      default: "",
     },
     khandanid: {
       type: mongoose.Schema.Types.ObjectId,

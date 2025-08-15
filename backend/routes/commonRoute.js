@@ -57,7 +57,7 @@ commonRouter.post("/contact", (req, res) => {
   // Define the email options
   const mailOptions = {
     from: `"${name}" <${email}>`, // Sender's name and email
-    to: "yovey73412@nicext.com", // <-- This is where the emails will be sent.
+    to: process.env.EMAIL_USER, // <-- This is where the emails will be sent.
     replyTo: email, // So you can reply directly to the user's email
     subject: `New Contact Form Message from ${name}`,
     html: `

@@ -38,6 +38,8 @@ import {
   sendLoginOtp,
   forgotUsername,
   listUserFeatures,
+  verifyRegistrationOtp,
+  setInitialPassword,
 } from "../controllers/userController.js";
 import authUser from "../middlewares/authUser.js";
 import {
@@ -52,6 +54,9 @@ userRouter.post("/register", registerUser);
 userRouter.post("/login", loginUser);
 userRouter.post("/login-with-otp", upload.none(), loginWithOtp); // NEW
 userRouter.post("/send-login-otp", upload.none(), sendLoginOtp); // NEW
+
+userRouter.post("/verify-registration-otp", verifyRegistrationOtp);
+userRouter.post("/set-initial-password", setInitialPassword);
 
 // --- FORGOT/RECOVERY ROUTES ---
 userRouter.post("/forgot-username", upload.none(), forgotUsername); // NEW

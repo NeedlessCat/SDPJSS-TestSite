@@ -6,6 +6,7 @@ import jwt from "jsonwebtoken";
 import { v2 as cloudinary } from "cloudinary";
 import razorpay from "razorpay";
 import html_to_pdf from "html-pdf-node";
+import axios from "axios";
 
 import userModel from "../models/UserModel.js";
 import jobOpeningModel from "../models/JobOpeningModel.js";
@@ -231,6 +232,19 @@ const sendEmail = async (email, username, password, fullname) => {
   }
 };
 
+const verifyRecaptcha = async (token) => {
+  try {
+    const secretKey = process.env.RECAPTCHA_SECRET_KEY;
+    const response = await axios.post(
+      `https://www.google.com/recaptcha/api/siteverify?secret=${secretKey}&response=${token}`
+    );
+    return response.data.success;
+  } catch (error) {
+    console.error("reCAPTCHA verification failed:", error);
+    return false;
+  }
+};
+
 //-----------------------------------------------------------------------------
 
 // API for user registration
@@ -239,7 +253,6 @@ const registerUser = async (req, res) => {
     console.log(req.body);
     const {
       fullname: rawFullname,
-      fatherid,
       fatherName: rawFatherName,
       mother: rawMother,
       gender,
@@ -253,8 +266,22 @@ const registerUser = async (req, res) => {
       profession,
       healthissue: rawHealthissue,
       marriage,
+      recaptchaToken,
     } = req.body;
 
+    if (!recaptchaToken) {
+      return res.json({
+        success: false,
+        message: "reCAPTCHA token is missing.",
+      });
+    }
+    const isHuman = await verifyRecaptcha(recaptchaToken);
+    if (!isHuman) {
+      return res.json({
+        success: false,
+        message: "reCAPTCHA verification failed. Please try again.",
+      });
+    }
     const fullname = rawFullname?.trim();
     const fatherName = rawFatherName?.trim();
     const mother = rawMother?.trim();
@@ -318,10 +345,10 @@ const registerUser = async (req, res) => {
     const hasEmail = email && email !== "";
     const hasMobile = mobile && mobile.code && mobile.number;
 
-    if (!hasEmail && !hasMobile) {
+    if (!hasEmail || !hasMobile) {
       return res.json({
         success: false,
-        message: "At least one contact method (email or mobile) is required",
+        message: "Contact (email & mobile) is required",
       });
     }
 
@@ -368,12 +395,32 @@ const registerUser = async (req, res) => {
       dob: dobDate,
     });
 
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 min validity
+
     if (existingUser) {
-      return res.json({
-        success: false,
-        message:
-          "A user with the same name, father's name, and date of birth already exists.",
-      });
+      if (!existingUser.password) {
+        // Update email if it has changed, and set new OTP
+        existingUser.contact.email = email;
+        existingUser.otp = otp;
+        existingUser.otpExpires = otpExpires;
+        await existingUser.save();
+        await sendOtpEmail(email, otp, existingUser.fullname);
+        return res.json({
+          success: true,
+          message:
+            "You have already registered. A new OTP has been sent to your email to set your password.",
+          nextStep: "verifyOtp",
+          email: email, // Return email for frontend state
+        });
+      } else {
+        // User is fully registered.
+        return res.json({
+          success: false,
+          message:
+            "A user with the same name, father's name, and date of birth already exists.",
+        });
+      }
     }
 
     const today = new Date();
@@ -393,7 +440,6 @@ const registerUser = async (req, res) => {
 
     // Generate username and password
     const generatedUsername = generateUsername(fullname, dobDate);
-    const generatedPassword = generateRandomPassword();
 
     // Check if username already exists, if so, add a number suffix
     let finalUsername = generatedUsername;
@@ -402,10 +448,6 @@ const registerUser = async (req, res) => {
       finalUsername = `${generatedUsername}${counter}`;
       counter++;
     }
-
-    // Hash password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(generatedPassword, salt);
 
     // Prepare contact object
     const contactData = {
@@ -442,7 +484,6 @@ const registerUser = async (req, res) => {
       dob: dobDate,
       bloodgroup: bloodgroup || "",
       username: finalUsername,
-      password: hashedPassword,
       khandanid,
       contact: contactData,
       address: addressData,
@@ -463,58 +504,135 @@ const registerUser = async (req, res) => {
       },
       islive: true,
       isComplete: false,
+      otp,
+      otpExpires,
       isApproved: "approved",
     };
 
     const newUser = new userModel(userData);
     const savedUser = await newUser.save();
 
-    // Send credentials via available contact methods
-    const notifications = [];
-
-    if (hasEmail) {
-      const emailSent = await sendEmail(
-        email,
-        finalUsername,
-        generatedPassword,
-        fullname
-      );
-      notifications.push(
-        emailSent ? "Email sent successfully" : "Email sending failed"
-      );
-    }
-
-    // if (hasMobile) {
-    //    const smsSent = await sendSMS(mobile, finalUsername, generatedPassword);
-    //    notifications.push(
-    //      smsSent ? "SMS sent successfully" : "SMS sending failed"
-    //    );
-    // }
-
-    // Generate JWT token
-    const token = jwt.sign({ id: savedUser._id }, process.env.JWT_SECRET);
-
-    res.json({
-      success: true,
-      token,
-      userId: savedUser._id,
-      userIdGenerated: userId,
-      username: finalUsername,
-      notifications,
-      message:
-        "User registered successfully. Login credentials sent to provided contact methods.",
-    });
+    await sendOtpEmail(email, otp, fullname);
   } catch (error) {
     console.log(error);
     res.json({ success: false, message: error.message });
   }
 };
 
+// --- NEW: API for Registration (Step 2: Verify OTP) ---
+const verifyRegistrationOtp = async (req, res) => {
+  try {
+    const { email: rawEmail, otp } = req.body;
+    const email = rawEmail?.trim().toLowerCase();
+
+    if (!email || !otp) {
+      return res.json({
+        success: false,
+        message: "Email and OTP are required.",
+      });
+    }
+
+    const user = await userModel.findOne({ "contact.email": email });
+
+    if (!user) {
+      return res.json({ success: false, message: "User not found." });
+    }
+
+    if (user.otp !== otp || user.otpExpires < new Date()) {
+      return res.json({
+        success: false,
+        message: "OTP has expired or is invalid.",
+      });
+    }
+
+    // OTP is valid, clear it
+    user.otp = null;
+    user.otpExpires = null;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: "OTP verified successfully. Please set your password.",
+      nextStep: "setPassword",
+    });
+  } catch (error) {
+    console.error("Error verifying registration OTP:", error);
+    res.status(500).json({ success: false, message: "Internal server error." });
+  }
+};
+
+// --- NEW: API for Registration (Step 3: Set Initial Password & Login) ---
+const setInitialPassword = async (req, res) => {
+  try {
+    const { email: rawEmail, password } = req.body;
+    const email = rawEmail?.trim().toLowerCase();
+
+    if (!email || !password) {
+      return res.json({
+        success: false,
+        message: "Email and password are required.",
+      });
+    }
+    if (password.length < 8) {
+      return res.json({
+        success: false,
+        message: "Password must be at least 8 characters long.",
+      });
+    }
+
+    const user = await userModel.findOne({ "contact.email": email });
+
+    if (!user) {
+      return res.json({ success: false, message: "User not found." });
+    }
+    if (user.password) {
+      return res.json({
+        success: false,
+        message: "Password has already been set for this account.",
+      });
+    }
+
+    // Hash and save the new password
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(password, salt);
+    await user.save();
+
+    // Auto-login: Generate JWT token
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET);
+
+    await sendPasswordResetConfirmationEmail(email, user.fullname);
+
+    res.json({
+      success: true,
+      token,
+      message: "Password set successfully! You are now logged in.",
+    });
+  } catch (error) {
+    console.error("Error setting initial password:", error);
+    res.status(500).json({ success: false, message: "Internal server error." });
+  }
+};
+
 //API for user login
 const loginUser = async (req, res) => {
   try {
-    // console.log("Request Body User: ", req.body);
-    const { username: rawUsername, password } = req.body;
+    const { username: rawUsername, password, recaptchaToken } = req.body; // <-- NEW recaptchaToken
+
+    // Verify reCAPTCHA
+    if (!recaptchaToken) {
+      return res.json({
+        success: false,
+        message: "reCAPTCHA token is missing.",
+      });
+    }
+    const isHuman = await verifyRecaptcha(recaptchaToken);
+    if (!isHuman) {
+      return res.json({
+        success: false,
+        message: "reCAPTCHA verification failed.",
+      });
+    }
+
     const username = rawUsername?.trim();
 
     if (!username || !password) {
@@ -523,10 +641,20 @@ const loginUser = async (req, res) => {
         message: "Username and password are required",
       });
     }
+
     const user = await userModel.findOne({ username });
 
     if (!user) {
       return res.json({ success: false, message: "User does not exist" });
+    }
+
+    // Check if password is set
+    if (!user.password) {
+      return res.json({
+        success: false,
+        message:
+          "Account setup is not complete. Please use the 'Forgot Password' option to set your password.",
+      });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
@@ -2919,6 +3047,8 @@ const listUserFeatures = async (req, res) => {
 // Update the export statement to include the new functions
 export {
   registerUser,
+  verifyRegistrationOtp,
+  setInitialPassword,
   loginUser,
   getUserProfile,
   updateUserProfile,
