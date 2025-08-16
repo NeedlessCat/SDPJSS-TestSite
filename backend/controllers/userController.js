@@ -514,29 +514,50 @@ const registerUser = async (req, res) => {
     const savedUser = await newUser.save();
 
     await sendOtpEmail(email, otp, fullname);
+
+    return res.json({
+      success: true,
+      message: "You are great",
+    });
   } catch (error) {
     console.log(error);
     res.json({ success: false, message: error.message });
   }
 };
 
-// --- NEW: API for Registration (Step 2: Verify OTP) ---
+// --- MODIFIED: API for Registration (Step 2: Verify OTP) ---
 const verifyRegistrationOtp = async (req, res) => {
   try {
-    const { email: rawEmail, otp } = req.body;
+    const {
+      email: rawEmail,
+      otp,
+      fullname: rawFullname,
+      fatherName: rawFatherName,
+      dob,
+    } = req.body;
     const email = rawEmail?.trim().toLowerCase();
+    const fullname = rawFullname?.trim();
+    const fatherName = rawFatherName?.trim();
 
-    if (!email || !otp) {
+    if (!email || !otp || !fullname || !fatherName || !dob) {
       return res.json({
         success: false,
-        message: "Email and OTP are required.",
+        message: "Email, OTP, and user identification details are required.",
       });
     }
 
-    const user = await userModel.findOne({ "contact.email": email });
+    const user = await userModel.findOne({
+      fullname,
+      fatherName,
+      dob: new Date(dob),
+      "contact.email": email,
+    });
 
     if (!user) {
-      return res.json({ success: false, message: "User not found." });
+      return res.json({
+        success: false,
+        message: "User not found. Please start over.",
+      });
     }
 
     if (user.otp !== otp || user.otpExpires < new Date()) {
@@ -562,18 +583,28 @@ const verifyRegistrationOtp = async (req, res) => {
   }
 };
 
-// --- NEW: API for Registration (Step 3: Set Initial Password & Login) ---
+// --- MODIFIED: API for Registration (Step 3: Set Initial Password & Login) ---
 const setInitialPassword = async (req, res) => {
   try {
-    const { email: rawEmail, password } = req.body;
+    const {
+      email: rawEmail,
+      password,
+      fullname: rawFullname,
+      fatherName: rawFatherName,
+      dob,
+    } = req.body;
     const email = rawEmail?.trim().toLowerCase();
+    const fullname = rawFullname?.trim();
+    const fatherName = rawFatherName?.trim();
 
-    if (!email || !password) {
+    if (!email || !password || !fullname || !fatherName || !dob) {
       return res.json({
         success: false,
-        message: "Email and password are required.",
+        message:
+          "Email, password, and user identification details are required.",
       });
     }
+
     if (password.length < 8) {
       return res.json({
         success: false,
@@ -581,7 +612,12 @@ const setInitialPassword = async (req, res) => {
       });
     }
 
-    const user = await userModel.findOne({ "contact.email": email });
+    const user = await userModel.findOne({
+      fullname,
+      fatherName,
+      dob: new Date(dob),
+      "contact.email": email,
+    });
 
     if (!user) {
       return res.json({ success: false, message: "User not found." });
@@ -610,6 +646,63 @@ const setInitialPassword = async (req, res) => {
     });
   } catch (error) {
     console.error("Error setting initial password:", error);
+    res.status(500).json({ success: false, message: "Internal server error." });
+  }
+};
+
+const resendRegistrationOtp = async (req, res) => {
+  try {
+    const {
+      email: rawEmail,
+      fullname: rawFullname,
+      fatherName: rawFatherName,
+      dob,
+    } = req.body;
+    const email = rawEmail?.trim().toLowerCase();
+    const fullname = rawFullname?.trim();
+    const fatherName = rawFatherName?.trim();
+
+    if (!email || !fullname || !fatherName || !dob) {
+      return res.json({
+        success: false,
+        message: "Required user details are missing to resend OTP.",
+      });
+    }
+
+    const user = await userModel.findOne({
+      fullname,
+      fatherName,
+      dob: new Date(dob),
+      "contact.email": email,
+    });
+
+    if (!user) {
+      return res.json({
+        success: false,
+        message: "Pending registration not found. Please start over.",
+      });
+    }
+
+    if (user.password) {
+      return res.json({
+        success: false,
+        message: "This account is already fully registered.",
+      });
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    user.otp = otp;
+    user.otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 min validity
+    await user.save();
+
+    await sendOtpEmail(email, otp, user.fullname);
+
+    res.json({
+      success: true,
+      message: "A new OTP has been sent to your email.",
+    });
+  } catch (error) {
+    console.error("Error resending registration OTP:", error);
     res.status(500).json({ success: false, message: "Internal server error." });
   }
 };
@@ -1743,26 +1836,39 @@ const forgotUsername = async (req, res) => {
     const {
       fullname: rawFullname,
       khandanid,
-      fatherid,
       fatherName: rawFatherName,
       dob,
+      recaptchaToken,
     } = req.body;
 
-    // --- TRIMMED --- Trim the incoming lookup fields
+    // Added reCAPTCHA verification
+    if (!recaptchaToken) {
+      return res.json({
+        success: false,
+        message: "reCAPTCHA token is missing.",
+      });
+    }
+    const isHuman = await verifyRecaptcha(recaptchaToken);
+    if (!isHuman) {
+      return res.json({
+        success: false,
+        message: "reCAPTCHA verification failed.",
+      });
+    }
+
     const fullname = rawFullname?.trim();
     const fatherName = rawFatherName?.trim();
 
-    if (!fullname || !khandanid || !(fatherid || fatherName) || !dob) {
+    if (!fullname || !khandanid || !fatherName || !dob) {
       return res.json({
         success: false,
         message: "All fields (Full Name, Khandan, Father, DOB) are required.",
       });
-    } // Find the user based on the provided details
+    }
 
     const user = await userModel.findOne({
       fullname,
       khandanid,
-      // fatherid,
       fatherName,
       dob: new Date(dob),
     });
@@ -1773,16 +1879,16 @@ const forgotUsername = async (req, res) => {
         message:
           "No user found with the provided details. Please check the information and try again.",
       });
-    } // Check if user has an email
+    }
 
     const email = user.contact.email;
     if (!email) {
       return res.json({
         success: false,
         message:
-          "User found, but no email is registered. Cannot send username automatically. Please contact support.",
+          "User found, but no email is registered. Please contact support.",
       });
-    } // Send the username to the user's email
+    }
 
     const emailSent = await sendUsernameEmail(
       email,
@@ -3050,6 +3156,7 @@ export {
   registerUser,
   verifyRegistrationOtp,
   setInitialPassword,
+  resendRegistrationOtp,
   loginUser,
   getUserProfile,
   updateUserProfile,

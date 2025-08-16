@@ -9,6 +9,7 @@ import userModel from "../models/UserModel.js";
 import guestUserModel from "../models/GuestUserModel.js";
 import donationModel from "../models/DonationModel.js";
 import guestDonationModel from "../models/GuestDonationModel.js";
+import childUserModel from "../models/ChildUserModel.js";
 
 // HELPER FUNCTIONS (Unchanged)
 //================================================================
@@ -339,6 +340,257 @@ const getGuestDonationsById = async (req, res) => {
       success: false,
       message: "Server error while fetching donations.",
     });
+  }
+};
+
+// -----------------------Child User Functioins -----------------
+
+const generateChildId = async () => {
+  try {
+    const lastChild = await childUserModel
+      .findOne({}, { id: 1 })
+      .sort({ id: -1 })
+      .limit(1);
+    if (!lastChild || !lastChild.id) {
+      return "CUAAA0001";
+    }
+
+    let num = parseInt(lastChild.id.slice(-4));
+    num++;
+    return "CUAAA" + num.toString().padStart(4, "0");
+  } catch (error) {
+    console.error("Error generating child ID:", error);
+    // Fallback in case of an error
+    return `CUERR${Date.now()}`;
+  }
+};
+
+export const addChildUser = async (req, res) => {
+  try {
+    const { parentId, fullname, mother, gender, dob } = req.body;
+
+    // 1. Validation
+    if (!parentId || !fullname || !gender || !dob) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Parent ID, Fullname, Gender, and DOB are required.",
+        });
+    }
+
+    // 2. Check if parent exists
+    const parent = await userModel.findById(parentId);
+    if (!parent) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Parent user not found." });
+    }
+
+    // 3. Check for duplicates (same parent, same child fullname and dob)
+    const existingChild = await childUserModel.findOne({
+      fatherid: parentId,
+      fullname,
+      dob,
+    });
+    if (existingChild) {
+      return res
+        .status(409)
+        .json({
+          success: false,
+          message:
+            "A child with the same name and date of birth already exists for this parent.",
+        });
+    }
+
+    // 4. Generate a unique ID for the child
+    const childId = await generateChildId();
+
+    // 5. Create and save the new child
+    const newChild = new childUserModel({
+      fullname,
+      id: childId,
+      fatherid: parentId,
+      mother,
+      gender,
+      dob,
+      isComplete: true, // Mark as complete since all required info is provided
+    });
+
+    await newChild.save();
+
+    res
+      .status(201)
+      .json({
+        success: true,
+        message: "Child profile created successfully.",
+        data: newChild,
+      });
+  } catch (error) {
+    console.error("Error adding child user:", error);
+    res
+      .status(500)
+      .json({ success: false, message: "Server error while adding child." });
+  }
+};
+
+export const getMyChildUsers = async (req, res) => {
+  try {
+    const { parentId } = req.params;
+
+    if (!parentId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Parent ID is required." });
+    }
+
+    const children = await childUserModel
+      .find({ fatherid: parentId })
+      .sort({ fullname: 1 });
+
+    res
+      .status(200)
+      .json({
+        success: true,
+        message: "Children fetched successfully.",
+        data: children,
+      });
+  } catch (error) {
+    console.error("Error fetching user's children:", error);
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Server error while fetching children.",
+      });
+  }
+};
+
+export const editChildUser = async (req, res) => {
+  try {
+    const { childId, parentId, fullname, mother, gender, dob } = req.body;
+
+    // 1. Validation
+    if (!childId || !parentId) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Child ID and Parent ID are required.",
+        });
+    }
+
+    // 2. Find the child to update
+    const childToUpdate = await childUserModel.findById(childId);
+    if (!childToUpdate) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Child profile not found." });
+    }
+
+    // 3. Authorization Check: Ensure the user owns this child profile
+    if (childToUpdate.fatherid.toString() !== parentId) {
+      return res
+        .status(403)
+        .json({
+          success: false,
+          message: "You are not authorized to edit this profile.",
+        });
+    }
+
+    // 4. Update fields
+    childToUpdate.fullname = fullname || childToUpdate.fullname;
+    childToUpdate.mother = mother || childToUpdate.mother;
+    childToUpdate.gender = gender || childToUpdate.gender;
+    childToUpdate.dob = dob || childToUpdate.dob;
+
+    const updatedChild = await childToUpdate.save();
+
+    res
+      .status(200)
+      .json({
+        success: true,
+        message: "Child profile updated successfully.",
+        data: updatedChild,
+      });
+  } catch (error) {
+    console.error("Error editing child user:", error);
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Server error while updating child profile.",
+      });
+  }
+};
+
+export const deleteChildUser = async (req, res) => {
+  try {
+    const { childId, parentId } = req.body;
+
+    // 1. Validation
+    if (!childId || !parentId) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Child ID and Parent ID are required.",
+        });
+    }
+
+    // 2. Find the child to delete
+    const childToDelete = await childUserModel.findById(childId);
+    if (!childToDelete) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Child profile not found." });
+    }
+
+    // 3. Authorization Check
+    if (childToDelete.fatherid.toString() !== parentId) {
+      return res
+        .status(403)
+        .json({
+          success: false,
+          message: "You are not authorized to delete this profile.",
+        });
+    }
+
+    // 4. Delete the profile
+    await childUserModel.findByIdAndDelete(childId);
+
+    res
+      .status(200)
+      .json({ success: true, message: "Child profile deleted successfully." });
+  } catch (error) {
+    console.error("Error deleting child user:", error);
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Server error while deleting child profile.",
+      });
+  }
+};
+
+export const getAllChildUsers = async (req, res) => {
+  try {
+    const allChildren = await childUserModel
+      .find({})
+      .populate("fatherid", "fullname id") // Populates father's name and ID
+      .sort({ createdAt: -1 });
+
+    res
+      .status(200)
+      .json({ success: true, count: allChildren.length, data: allChildren });
+  } catch (error) {
+    console.error("Error fetching all child users:", error);
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Server error while fetching all child profiles.",
+      });
   }
 };
 

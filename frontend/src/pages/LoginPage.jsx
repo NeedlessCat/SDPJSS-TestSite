@@ -1,11 +1,35 @@
-import React, { useContext, useState, useEffect, useMemo } from "react";
+import React, { useContext, useState, useEffect, useMemo, useRef } from "react";
 import Select from "react-select";
 import { AppContext } from "../context/AppContext";
 import axios from "axios";
 import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
 import ReCAPTCHA from "react-google-recaptcha";
-import { useRef } from "react";
+
+// --- Custom Hook for Persisting State in Session Storage ---
+// This hook ensures that if the user refreshes the page during a multi-step process,
+// they won't lose their progress.
+const useSessionStorageState = (key, defaultValue) => {
+  const [value, setValue] = useState(() => {
+    try {
+      const storedValue = sessionStorage.getItem(key);
+      return storedValue !== null ? JSON.parse(storedValue) : defaultValue;
+    } catch (error) {
+      console.error("Error reading from sessionStorage", error);
+      return defaultValue;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(key, JSON.stringify(value));
+    } catch (error) {
+      console.error("Error writing to sessionStorage", error);
+    }
+  }, [key, value]);
+
+  return [value, setValue];
+};
 
 const LoginPage = () => {
   const {
@@ -23,19 +47,18 @@ const LoginPage = () => {
 
   // --- Common State ---
   const [loading, setLoading] = useState(false);
+  const [recaptchaValue, setRecaptchaValue] = useState(null);
 
   // --- Login fields ---
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
   // --- Registration fields ---
-  const [registrationStep, setRegistrationStep] = useState(1);
-  const [fullname, setFullname] = useState("");
+  // const [fullname, setFullname] = useState("");
   const [selectedKhandanId, setSelectedKhandanId] = useState("");
-  const [fatherName, setFatherName] = useState("");
+  // const [fatherName, setFatherName] = useState("");
   const [gender, setGender] = useState("");
-  const [dob, setDob] = useState("");
-  const [email, setEmail] = useState("");
+  // const [dob, setDob] = useState("");
   const [mobile, setMobile] = useState({ code: "+91", number: "" });
   const [address, setAddress] = useState({
     currlocation: "",
@@ -48,14 +71,50 @@ const LoginPage = () => {
     street: "",
   });
 
-  // --- NEW: Registration flow state ---
+  // --- Registration flow state (Persisted in Session Storage) ---
+  const [registrationStep, setRegistrationStep] = useSessionStorageState(
+    "registrationStep",
+    1
+  );
+
+  // MODIFIED: Persist all necessary fields for unique identification
+  const [fullname, setFullname] = useSessionStorageState(
+    "registrationFullname",
+    ""
+  );
+  const [fatherName, setFatherName] = useSessionStorageState(
+    "registrationFatherName",
+    ""
+  );
+  const [dob, setDob] = useSessionStorageState("registrationDob", "");
+
+  const [email, setEmail] = useSessionStorageState("registrationEmail", ""); // Persisted for OTP step
   const [regOtp, setRegOtp] = useState("");
   const [regPassword, setRegPassword] = useState("");
   const [regConfirmPassword, setRegConfirmPassword] = useState("");
   const [regOtpTimer, setRegOtpTimer] = useState(0);
   const [isResendingRegOtp, setIsResendingRegOtp] = useState(false);
 
-  // --- State for real-time validation errors ---
+  // --- Forgot Password fields (Persisted in Session Storage) ---
+  const [forgotPasswordStep, setForgotPasswordStep] = useSessionStorageState(
+    "forgotPasswordStep",
+    1
+  );
+  const [forgotPasswordUsername, setForgotPasswordUsername] =
+    useSessionStorageState("forgotPasswordUsername", "");
+  const [otpCode, setOtpCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [otpTimer, setOtpTimer] = useState(0);
+  const [isResendingOtp, setIsResendingOtp] = useState(false);
+
+  // --- Forgot Username fields ---
+  const [forgotUsernameFullname, setForgotUsernameFullname] = useState("");
+  const [forgotUsernameKhandanId, setForgotUsernameKhandanId] = useState("");
+  const [forgotUsernameFatherName, setForgotUsernameFatherName] = useState("");
+  const [forgotUsernameDob, setForgotUsernameDob] = useState("");
+
+  // --- Real-time Validation Error States ---
   const [nameError, setNameError] = useState("");
   const [fatherNameError, setFatherNameError] = useState("");
   const [dobError, setDobError] = useState("");
@@ -66,22 +125,22 @@ const LoginPage = () => {
     useState("");
   const [forgotUsernameDobError, setForgotUsernameDobError] = useState("");
 
-  // --- Forgot Password fields ---
-  const [forgotPasswordUsername, setForgotPasswordUsername] = useState("");
-  const [otpCode, setOtpCode] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [forgotPasswordStep, setForgotPasswordStep] = useState(1);
-  const [otpTimer, setOtpTimer] = useState(0);
-  const [isResendingOtp, setIsResendingOtp] = useState(false);
+  useEffect(() => {
+    console.log("Registration Step Changed:", registrationStep);
+    console.log("Email for OTP:", email);
+    console.log("Current State:", state);
+  }, [registrationStep, email, state]);
 
-  // --- Forgot Username fields ---
-  const [forgotUsernameFullname, setForgotUsernameFullname] = useState("");
-  const [forgotUsernameKhandanId, setForgotUsernameKhandanId] = useState("");
-  const [forgotUsernameFatherName, setForgotUsernameFatherName] = useState("");
-  const [forgotUsernameDob, setForgotUsernameDob] = useState("");
+  // --- Effects ---
+  useEffect(() => {
+    loadKhandans();
+  }, []);
 
-  // --- Effects for Timers ---
+  useEffect(() => {
+    if (utoken) navigate("/");
+  }, [utoken, navigate]);
+
+  // OTP Timers
   useEffect(() => {
     let interval;
     if (otpTimer > 0) {
@@ -98,22 +157,16 @@ const LoginPage = () => {
     return () => clearInterval(interval);
   }, [regOtpTimer]);
 
-  useEffect(() => {
-    loadKhandans();
-  }, []);
-
-  useEffect(() => {
-    if (utoken) navigate("/");
-  }, [utoken, navigate]);
-
-  // --- Helper Functions ---
-  const capitalizeEachWord = (str) => {
-    if (!str) return "";
-    return str
-      .split(" ")
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(" ");
-  };
+  // --- Helper & Validation Functions ---
+  const capitalizeEachWord = (str) =>
+    !str
+      ? ""
+      : str
+          .split(" ")
+          .map(
+            (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+          )
+          .join(" ");
 
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
@@ -123,48 +176,42 @@ const LoginPage = () => {
 
   const formatKhandanOption = (khandan) => {
     let displayText = khandan.name;
-    if (khandan.address.landmark) {
+    if (khandan.address.landmark)
       displayText += `, ${khandan.address.landmark}`;
-    }
-    if (khandan.address.street) {
-      displayText += `, ${khandan.address.street}`;
-    }
+    if (khandan.address.street) displayText += `, ${khandan.address.street}`;
     displayText += ` (${khandan.khandanid})`;
     return displayText;
   };
 
-  // --- NEW: Validation function for names ---
-  const validateName = (name, fieldName) => {
-    if (/\s{2,}/.test(name)) {
-      return `${fieldName} cannot contain multiple spaces.`;
-    }
+  const validateOtp = (otp) => {
+    if (!otp) return "OTP is required";
+    if (!/^\d{6}$/.test(otp)) return "OTP must be exactly 6 digits";
     return "";
   };
 
-  // --- NEW: Validation function for Date of Birth ---
+  const validateName = (name, fieldName) =>
+    /\s{2,}/.test(name) ? `${fieldName} cannot contain multiple spaces.` : "";
+
   const validateDob = (dobString) => {
     if (!dobString) return "";
     const dob = new Date(dobString);
     const tenYearsAgo = new Date();
     tenYearsAgo.setFullYear(tenYearsAgo.getFullYear() - 10);
-
-    if (dob > tenYearsAgo) {
-      return "You must be at least 10 years old to register.";
-    }
-    return "";
+    return dob > tenYearsAgo
+      ? "You must be at least 10 years old to register."
+      : "";
   };
+
   const validateEmail = (email) =>
     email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
       ? "Please enter a valid email address."
       : "";
+
   const validateMobile = (number) => {
     if (!number) return "";
-    if (!/^\d{10}$/.test(number)) {
+    if (!/^\d{10}$/.test(number))
       return "Mobile number must be exactly 10 digits.";
-    }
-    if (number.startsWith("0")) {
-      return "Mobile number should not start with 0.";
-    }
+    if (number.startsWith("0")) return "Mobile number should not start with 0.";
     return "";
   };
 
@@ -177,7 +224,16 @@ const LoginPage = () => {
     [khandanList]
   );
 
-  // --- Handlers ---
+  const handleRecaptchaChange = (value) => setRecaptchaValue(value);
+
+  const resetRecaptcha = () => {
+    setRecaptchaValue(null);
+    if (recaptchaRef.current) {
+      recaptchaRef.current.reset();
+    }
+  };
+
+  // --- Event Handlers for Input Changes ---
   const handleFullnameChange = (e) => {
     const value = capitalizeEachWord(e.target.value);
     setFullname(value);
@@ -268,30 +324,93 @@ const LoginPage = () => {
     }
   };
 
-  // --- API Call Functions ---
+  // --- Flow Reset Functions ---
+  const resetRegistrationFlow = () => {
+    setState("Login");
+    setRegistrationStep(1);
+    setFullname("");
+    setSelectedKhandanId("");
+    setFatherName("");
+    setGender("");
+    setDob("");
+    setEmail("");
+    setMobile({ code: "+91", number: "" });
+    setAddress({
+      currlocation: "",
+      country: "",
+      state: "",
+      district: "",
+      city: "",
+      postoffice: "",
+      pin: "",
+      street: "",
+    });
+    setRegOtp("");
+    setRegPassword("");
+    setRegConfirmPassword("");
+    setRegOtpTimer(0);
+    setNameError("");
+    setFatherNameError("");
+    setDobError("");
+    setEmailError("");
+    setMobileError("");
+    resetRecaptcha();
+    // Clear session storage for this flow
+    sessionStorage.removeItem("registrationStep");
+    sessionStorage.removeItem("registrationEmail");
+    sessionStorage.removeItem("registrationFullname");
+    sessionStorage.removeItem("registrationFatherName");
+    sessionStorage.removeItem("registrationDob");
+  };
+
+  const resetForgotPasswordFlow = () => {
+    setForgotPasswordUsername("");
+    setOtpCode("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setForgotPasswordStep(1);
+    setOtpTimer(0);
+    setState("Login");
+    resetRecaptcha();
+    // Clear session storage for this flow
+    sessionStorage.removeItem("forgotPasswordStep");
+    sessionStorage.removeItem("forgotPasswordUsername");
+  };
+
+  const resetForgotUsernameFlow = () => {
+    setForgotUsernameFullname("");
+    setForgotUsernameKhandanId("");
+    setForgotUsernameFatherName("");
+    setForgotUsernameDob("");
+    setState("Login");
+    resetRecaptcha();
+  };
+
+  // --- Main Registration/Login Handler ---
   const onSubmitHandler = async (event) => {
     event.preventDefault();
-    if (state === "Register" && registrationStep === 1) {
-      if (
-        nameError ||
-        fatherNameError ||
-        dobError ||
-        emailError ||
-        mobileError
-      ) {
-        toast.error("Please fix the validation errors before submitting.");
-        setLoading(false);
-        return;
-      }
-    }
     setLoading(true);
+
     try {
-      const recaptchaToken = await recaptchaRef.current.executeAsync();
-      recaptchaRef.current.reset();
+      // Handle recaptcha only for steps that require it
+      if (
+        state === "Login" ||
+        (state === "Register" && registrationStep === 1)
+      ) {
+        if (!recaptchaValue) {
+          toast.error("Please complete the reCAPTCHA verification");
+          setLoading(false);
+          return;
+        }
+      }
+
+      const recaptchaToken = recaptchaValue;
 
       if (state === "Register") {
-        // Registration Step 1: Submit Details
+        console.log("Into register: ", registrationStep);
+        // --- REGISTRATION STEP 1: Submit Details ---
         if (registrationStep === 1) {
+          console.log("Into registeration step");
           if (
             nameError ||
             fatherNameError ||
@@ -299,8 +418,11 @@ const LoginPage = () => {
             emailError ||
             mobileError
           ) {
-            return toast.error("Please fix the errors before submitting.");
+            toast.error("Please fix the validation errors before submitting.");
+            setLoading(false);
+            return;
           }
+          console.log("going to make api call...");
           const { data } = await axios.post(`${backendUrl}/api/user/register`, {
             fullname,
             khandanid: selectedKhandanId,
@@ -312,47 +434,102 @@ const LoginPage = () => {
             address,
             recaptchaToken,
           });
+          console.log("My data finally: ", data);
           if (data.success) {
             toast.success(data.message);
-            setEmail(data.email); // Ensure email state is set for OTP step
+
+            // Ensure email is properly set before moving to step 2
+            const emailToSet = data.email || email;
+            setEmail(emailToSet);
+
+            // Use setTimeout to ensure state updates are completed
+            console.log("Going to set the data success....");
+
+            console.log("Finally to set the data success....");
             setRegistrationStep(2);
+            console.log("registration set....");
             setRegOtpTimer(600);
+
+            console.log("At end: ", registrationStep);
+            console.log("At eend and : ", regOtpTimer);
           } else {
-            toast.error(data.message);
+            toast.error("My Error1 : ", data.message);
           }
         }
-        // Registration Step 2: Verify OTP
+        // --- REGISTRATION STEP 2: Verify OTP ---
         else if (registrationStep === 2) {
-          const { data } = await axios.post(
-            `${backendUrl}/api/user/verify-registration-otp`,
-            { email, otp: regOtp }
-          );
-          if (data.success) {
-            toast.success(data.message);
-            setRegistrationStep(3);
-          } else {
-            toast.error(data.message);
+          const otpError = validateOtp(regOtp);
+          if (otpError) {
+            toast.error("My Error: ", otpError);
+            setLoading(false);
+            return;
+          }
+          console.log("In step 2: ", regOtpTimer);
+          // Check if OTP has expired
+          if (regOtpTimer <= 0) {
+            toast.error("OTP has expired. Please request a new one.");
+            setLoading(false);
+            return;
+          }
+
+          try {
+            const { data } = await axios.post(
+              `${backendUrl}/api/user/verify-registration-otp`,
+              {
+                fullname: fullname.trim(),
+                fatherName: fatherName.trim(),
+                dob: dob,
+                email: email.trim(),
+                otp: regOtp.trim(),
+              }
+            );
+
+            if (data.success) {
+              toast.success(data.message);
+              setRegistrationStep(3);
+              // Clear OTP after successful verification
+              setRegOtp("");
+            } else {
+              toast.error(data.message || "Invalid OTP. Please try again.");
+            }
+          } catch (error) {
+            console.error("OTP Verification Error:", error);
+            const errorMessage =
+              error.response?.data?.message ||
+              error.response?.data?.error ||
+              "Failed to verify OTP. Please try again.";
+            toast.error(errorMessage);
           }
         }
-        // Registration Step 3: Set Password
+        // --- REGISTRATION STEP 3: Set Password ---
         else if (registrationStep === 3) {
-          if (regPassword !== regConfirmPassword)
-            return toast.error("Passwords do not match.");
+          if (regPassword !== regConfirmPassword) {
+            toast.error("Passwords do not match.");
+            setLoading(false);
+            return;
+          }
           const { data } = await axios.post(
             `${backendUrl}/api/user/set-initial-password`,
-            { email, password: regPassword }
+            {
+              fullname: fullname.trim(),
+              fatherName: fatherName.trim(),
+              dob: dob,
+              email: email.trim(),
+              password: regPassword,
+            }
           );
           if (data.success) {
             setUToken(data.token);
             localStorage.setItem("utoken", data.token);
             toast.success(data.message);
+            resetRegistrationFlow(); // Clean up state
             navigate("/");
           } else {
             toast.error(data.message);
           }
         }
       } else {
-        // Login
+        // --- LOGIN ---
         const { data } = await axios.post(`${backendUrl}/api/user/login`, {
           username,
           password,
@@ -367,53 +544,59 @@ const LoginPage = () => {
           toast.error(data.message);
         }
       }
+      resetRecaptcha();
     } catch (error) {
       toast.error(error.response?.data?.message || "An error occurred");
+      resetRecaptcha();
     } finally {
       setLoading(false);
     }
   };
 
   const handleResendRegistrationOtp = async () => {
-    // This requires resubmitting the initial data to trigger the backend logic
-    // This is a simplified approach; a more robust solution might have a dedicated resend endpoint
-    if (regOtpTimer > 0) return;
+    if (regOtpTimer > 0 || isResendingRegOtp) return;
+
     setIsResendingRegOtp(true);
     try {
-      const recaptchaToken = await recaptchaRef.current.executeAsync();
-      recaptchaRef.current.reset();
-      const { data } = await axios.post(`${backendUrl}/api/user/register`, {
-        fullname,
-        khandanid: selectedKhandanId,
-        fatherName,
-        gender,
-        dob,
-        email,
-        mobile,
-        address,
-        recaptchaToken,
-      });
+      const { data } = await axios.post(
+        `${backendUrl}/api/user/resend-registration-otp`,
+        {
+          fullname: fullname.trim(),
+          fatherName: fatherName.trim(),
+          dob: dob,
+          email: email.trim(),
+        }
+      );
+
       if (data.success) {
         toast.success("OTP resent successfully");
-        setRegOtpTimer(600);
+        setRegOtpTimer(600); // Reset timer to 10 minutes
+        setRegOtp(""); // Clear previous OTP input
       } else {
-        toast.error(data.message);
+        toast.error(data.message || "Failed to resend OTP");
       }
     } catch (error) {
-      toast.error("Failed to resend OTP.");
+      console.error("Resend OTP Error:", error);
+      toast.error("Failed to resend OTP. Please try again.");
     } finally {
       setIsResendingRegOtp(false);
     }
   };
 
-  // --- Forgot Password Flow ---
+  // --- Forgot Password Flow Handlers ---
   const handleForgotPasswordRequest = async (e) => {
     e.preventDefault();
+    if (!recaptchaValue) {
+      return toast.error("Please complete the reCAPTCHA verification");
+    }
     setLoading(true);
     try {
       const { data } = await axios.post(
         `${backendUrl}/api/user/forgot-password`,
-        { username: forgotPasswordUsername }
+        {
+          username: forgotPasswordUsername,
+          recaptchaToken: recaptchaValue,
+        }
       );
       if (data.success) {
         toast.success(data.message);
@@ -422,8 +605,10 @@ const LoginPage = () => {
       } else {
         toast.error(data.message);
       }
+      resetRecaptcha();
     } catch (error) {
       toast.error(error.response?.data?.message || "Failed to send OTP.");
+      resetRecaptcha();
     } finally {
       setLoading(false);
     }
@@ -452,17 +637,13 @@ const LoginPage = () => {
 
   const handleResetPassword = async (e) => {
     e.preventDefault();
-    if (newPassword !== confirmPassword) {
-      toast.error("Passwords do not match");
-      return;
-    }
-    if (newPassword.length < 8) {
-      toast.error("Password must be at least 8 characters long");
-      return;
-    }
+    if (newPassword !== confirmPassword)
+      return toast.error("Passwords do not match");
+    if (newPassword.length < 8)
+      return toast.error("Password must be at least 8 characters long");
+
     setLoading(true);
     try {
-      console.log(newPassword);
       const { data } = await axios.post(
         `${backendUrl}/api/user/reset-password`,
         { username: forgotPasswordUsername, newPassword }
@@ -484,6 +665,7 @@ const LoginPage = () => {
     if (otpTimer > 0) return;
     setIsResendingOtp(true);
     try {
+      // This resend doesn't need reCAPTCHA again as it was done on step 1
       const { data } = await axios.post(
         `${backendUrl}/api/user/forgot-password`,
         { username: forgotPasswordUsername }
@@ -501,17 +683,7 @@ const LoginPage = () => {
     }
   };
 
-  const resetForgotPasswordFlow = () => {
-    setForgotPasswordUsername("");
-    setOtpCode("");
-    setNewPassword("");
-    setConfirmPassword("");
-    setForgotPasswordStep(1);
-    setOtpTimer(0);
-    setState("Login");
-  };
-
-  // --- Forgot Username Flow ---
+  // --- Forgot Username Flow Handler ---
   const handleForgotUsernameRequest = async (e) => {
     e.preventDefault();
     if (
@@ -519,8 +691,10 @@ const LoginPage = () => {
       forgotUsernameFatherError ||
       forgotUsernameDobError
     ) {
-      toast.error("Please fix the errors before submitting.");
-      return;
+      return toast.error("Please fix the errors before submitting.");
+    }
+    if (!recaptchaValue) {
+      return toast.error("Please complete the reCAPTCHA verification");
     }
     setLoading(true);
     try {
@@ -529,6 +703,7 @@ const LoginPage = () => {
         khandanid: forgotUsernameKhandanId,
         fatherName: forgotUsernameFatherName,
         dob: forgotUsernameDob,
+        recaptchaToken: recaptchaValue,
       };
       const { data } = await axios.post(
         `${backendUrl}/api/user/forgot-username`,
@@ -540,76 +715,31 @@ const LoginPage = () => {
       } else {
         toast.error(data.message);
       }
+      resetRecaptcha();
     } catch (error) {
       toast.error(
         error.response?.data?.message || "Failed to recover username."
       );
+      resetRecaptcha();
     } finally {
       setLoading(false);
     }
   };
 
-  const resetForgotUsernameFlow = () => {
-    setForgotUsernameFullname("");
-    setForgotUsernameKhandanId("");
-    setForgotUsernameFatherName("");
-    setForgotUsernameDob("");
-    setState("Login");
-  };
+  // --- RENDER LOGIC ---
 
-  const resetRegistrationFlow = () => {
-    setState("Login");
-    setRegistrationStep(1);
-    setFullname("");
-    setSelectedKhandanId("");
-    setFatherName("");
-    setGender("");
-    setDob("");
-    setEmail("");
-    setMobile({ code: "+91", number: "" });
-    setAddress({
-      currlocation: "",
-      country: "",
-      state: "",
-      district: "",
-      city: "",
-      postoffice: "",
-      pin: "",
-      street: "",
-    });
-    setRegOtp("");
-    setRegPassword("");
-    setRegConfirmPassword("");
-    setRegOtpTimer(0);
-
-    // Clear all validation errors
-    setNameError("");
-    setFatherNameError("");
-    setDobError("");
-    setEmailError("");
-    setMobileError("");
-  };
-
-  // --- Render Logic ---
-  const renderButton = (text) => (
-    <button
-      type="submit"
-      disabled={
-        loading ||
-        nameError ||
-        fatherNameError ||
-        dobError ||
-        emailError ||
-        mobileError
-      }
-      className="bg-primary hover:bg-primary/90 text-white w-full py-3 px-4 rounded-lg text-base font-medium transition-colors duration-200 shadow-sm disabled:bg-primary/50 disabled:cursor-not-allowed"
-    >
-      {loading ? "Processing..." : text}
-    </button>
-  );
-
-  // --- Conditional Rendering of Forms ---
+  // --- RENDER: Forgot Password Form ---
   if (state === "ForgotPassword") {
+    // Determine if the submit button should be disabled for each step
+    const isStep1ButtonDisabled =
+      loading || !forgotPasswordUsername || !recaptchaValue;
+    const isStep2ButtonDisabled = loading || !otpCode || otpCode.length !== 6;
+    const isStep3ButtonDisabled =
+      loading ||
+      !newPassword ||
+      newPassword.length < 8 ||
+      newPassword !== confirmPassword;
+
     return (
       <div className="min-h-screen flex items-center justify-center px-2 py-4 sm:px-4 sm:py-8">
         <div className="w-full max-w-md">
@@ -627,15 +757,9 @@ const LoginPage = () => {
                   {forgotPasswordStep === 3 && "Enter your new password"}
                 </p>
               </div>
+
               {forgotPasswordStep === 1 && (
                 <form
-                  disabled={
-                    nameError ||
-                    fatherNameError ||
-                    dobError ||
-                    emailError ||
-                    mobileError
-                  }
                   onSubmit={handleForgotPasswordRequest}
                   className="flex flex-col gap-4"
                 >
@@ -654,9 +778,23 @@ const LoginPage = () => {
                       placeholder="Enter your username"
                     />
                   </div>
-                  {renderButton("Send OTP")}
+                  <div className="w-full">
+                    <ReCAPTCHA
+                      ref={recaptchaRef}
+                      sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY}
+                      onChange={handleRecaptchaChange}
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={isStep1ButtonDisabled}
+                    className="bg-primary hover:bg-primary/90 text-white w-full py-3 px-4 rounded-lg text-base font-medium transition-colors duration-200 shadow-sm disabled:bg-primary/50 disabled:cursor-not-allowed"
+                  >
+                    {loading ? "Processing..." : "Send OTP"}
+                  </button>
                 </form>
               )}
+
               {forgotPasswordStep === 2 && (
                 <form
                   onSubmit={handleVerifyOtp}
@@ -691,9 +829,16 @@ const LoginPage = () => {
                       </button>
                     </div>
                   </div>
-                  {renderButton("Verify OTP")}
+                  <button
+                    type="submit"
+                    disabled={isStep2ButtonDisabled}
+                    className="bg-primary hover:bg-primary/90 text-white w-full py-3 px-4 rounded-lg text-base font-medium transition-colors duration-200 shadow-sm disabled:bg-primary/50 disabled:cursor-not-allowed"
+                  >
+                    {loading ? "Processing..." : "Verify OTP"}
+                  </button>
                 </form>
               )}
+
               {forgotPasswordStep === 3 && (
                 <form
                   onSubmit={handleResetPassword}
@@ -734,9 +879,16 @@ const LoginPage = () => {
                         </p>
                       )}
                   </div>
-                  {renderButton("Reset Password")}
+                  <button
+                    type="submit"
+                    disabled={isStep3ButtonDisabled}
+                    className="bg-primary hover:bg-primary/90 text-white w-full py-3 px-4 rounded-lg text-base font-medium transition-colors duration-200 shadow-sm disabled:bg-primary/50 disabled:cursor-not-allowed"
+                  >
+                    {loading ? "Processing..." : "Reset Password"}
+                  </button>
                 </form>
               )}
+
               <div className="text-center text-sm mt-4">
                 <span
                   onClick={resetForgotPasswordFlow}
@@ -752,7 +904,18 @@ const LoginPage = () => {
     );
   }
 
+  // --- RENDER: Forgot Username Form ---
   if (state === "ForgotUsername") {
+    const isButtonDisabled =
+      loading ||
+      forgotUsernameNameError ||
+      forgotUsernameFatherError ||
+      forgotUsernameDobError ||
+      !forgotUsernameFullname ||
+      !forgotUsernameKhandanId ||
+      !forgotUsernameFatherName ||
+      !forgotUsernameDob ||
+      !recaptchaValue;
     return (
       <div className="min-h-screen flex items-center justify-center px-2 py-4 sm:px-4 sm:py-8">
         <div className="w-full max-w-lg">
@@ -769,7 +932,6 @@ const LoginPage = () => {
                   Enter your details to find your account.
                 </p>
               </div>
-
               <div className="w-full">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Full Name <span className="text-red-500">*</span>
@@ -788,7 +950,6 @@ const LoginPage = () => {
                   </p>
                 )}
               </div>
-
               <div className="w-full">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Khandan <span className="text-red-500">*</span>
@@ -806,7 +967,6 @@ const LoginPage = () => {
                   required
                 />
               </div>
-
               <div className="w-full">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Father's Name <span className="text-red-500">*</span>
@@ -825,7 +985,6 @@ const LoginPage = () => {
                   </p>
                 )}
               </div>
-
               <div className="w-full">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Date of Birth <span className="text-red-500">*</span>
@@ -843,9 +1002,20 @@ const LoginPage = () => {
                   </p>
                 )}
               </div>
-
-              {renderButton("Recover Username")}
-
+              <div className="w-full">
+                <ReCAPTCHA
+                  ref={recaptchaRef}
+                  sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY}
+                  onChange={handleRecaptchaChange}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={isButtonDisabled}
+                className="bg-primary hover:bg-primary/90 text-white w-full py-3 px-4 rounded-lg text-base font-medium transition-colors duration-200 shadow-sm disabled:bg-primary/50 disabled:cursor-not-allowed"
+              >
+                {loading ? "Processing..." : "Recover Username"}
+              </button>
               <div className="text-center text-sm mt-2">
                 <span
                   onClick={resetForgotUsernameFlow}
@@ -861,14 +1031,31 @@ const LoginPage = () => {
     );
   }
 
-  // Main Login/Register Form
+  // --- RENDER: Main Login/Register Form ---
+  // Determine button disabled state for each form/step
+  const isLoginDisabled = loading || !username || !password || !recaptchaValue;
+  const isRegStep1Disabled =
+    loading ||
+    nameError ||
+    fatherNameError ||
+    dobError ||
+    emailError ||
+    mobileError ||
+    !fullname ||
+    !selectedKhandanId ||
+    !fatherName ||
+    !gender ||
+    !dob ||
+    !recaptchaValue;
+  const isRegStep2Disabled = loading || !regOtp || regOtp.length !== 6;
+  const isRegStep3Disabled =
+    loading ||
+    !regPassword ||
+    regPassword.length < 8 ||
+    regPassword !== regConfirmPassword;
+
   return (
     <div className="min-h-screen flex items-center justify-center px-2 py-4 sm:px-4 sm:py-8">
-      <ReCAPTCHA
-        ref={recaptchaRef}
-        size="invisible"
-        sitekey="6Lcas6YrAAAAAFpSEPG4cMSWhWgds3PXVcfFANoy"
-      />
       <div className="w-full max-w-lg">
         <form
           onSubmit={onSubmitHandler}
@@ -892,12 +1079,10 @@ const LoginPage = () => {
                   "Create a secure password for your account."}
               </p>
             </div>
-
             {state === "Register" ? (
               <>
                 {registrationStep === 1 && (
                   <>
-                    {/* Full Name Input */}
                     <div className="w-full">
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Full Name <span className="text-red-500">*</span>
@@ -910,22 +1095,19 @@ const LoginPage = () => {
                         required
                         placeholder="Enter your full name"
                       />
-                      {/* NEW: Error message display */}
                       {nameError && (
                         <p className="text-red-500 text-xs mt-1">{nameError}</p>
                       )}
                     </div>
-
                     <div className="w-full">
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Khandan <span className="text-red-500">*</span>
                       </label>
                       <Select
                         options={khandanOptions}
-                        onChange={(option) => {
-                          const khandanId = option ? option.value : "";
-                          setSelectedKhandanId(khandanId);
-                        }}
+                        onChange={(option) =>
+                          setSelectedKhandanId(option ? option.value : "")
+                        }
                         value={khandanOptions.find(
                           (opt) => opt.value === selectedKhandanId
                         )}
@@ -934,7 +1116,6 @@ const LoginPage = () => {
                         required
                       />
                     </div>
-
                     <div className="w-full">
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Father's Name <span className="text-red-500">*</span>
@@ -947,18 +1128,12 @@ const LoginPage = () => {
                         required
                         placeholder="Enter your father's full name"
                       />
-                      {/* NEW: Error message display */}
                       {fatherNameError && (
                         <p className="text-red-500 text-xs mt-1">
                           {fatherNameError}
                         </p>
                       )}
-
-                      <p className="mt-2 text-xs text-gray-500">
-                        Please enter his full name.
-                      </p>
                     </div>
-
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="w-full">
                         <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -987,7 +1162,6 @@ const LoginPage = () => {
                           value={dob}
                           required
                         />
-                        {/* NEW: Error message display */}
                         {dobError && (
                           <p className="text-red-500 text-xs mt-1">
                             {dobError}
@@ -995,7 +1169,6 @@ const LoginPage = () => {
                         )}
                       </div>
                     </div>
-
                     <div className="w-full">
                       <h3 className="text-lg font-medium text-gray-800 my-2">
                         Contact Information
@@ -1064,7 +1237,6 @@ const LoginPage = () => {
                         )}
                       </div>
                     </div>
-
                     <div className="w-full">
                       <h3 className="text-lg font-medium text-gray-800 my-2">
                         Address Information
@@ -1133,7 +1305,7 @@ const LoginPage = () => {
                         </div>
                         <div className="w-full">
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            District <span className="text-red-500">*</span>
+                            District
                           </label>
                           <input
                             className="border border-zinc-300 rounded-lg w-full p-3"
@@ -1145,7 +1317,6 @@ const LoginPage = () => {
                               }))
                             }
                             value={address.district}
-                            required
                             placeholder="District"
                           />
                         </div>
@@ -1227,39 +1398,59 @@ const LoginPage = () => {
                   </>
                 )}
                 {registrationStep === 2 && (
-                  <>
-                    <div className="w-full">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        OTP <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        className="border border-zinc-300 rounded-lg w-full p-3"
-                        type="text"
-                        onChange={(e) => setRegOtp(e.target.value)}
-                        value={regOtp}
-                        required
-                        placeholder="Enter 6-digit OTP"
-                        maxLength="6"
-                      />
-                      <div className="flex justify-between items-center mt-2">
-                        <span className="text-sm text-gray-600">
-                          {regOtpTimer > 0
-                            ? `Resend OTP in ${formatTime(regOtpTimer)}`
-                            : "OTP expired"}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={handleResendRegistrationOtp}
-                          disabled={regOtpTimer > 0 || isResendingRegOtp}
-                          className="text-primary hover:text-primary/80 underline text-sm font-medium disabled:text-gray-400 disabled:no-underline disabled:cursor-not-allowed"
-                        >
-                          {isResendingRegOtp ? "Sending..." : "Resend OTP"}
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                )}
+                  <div className="w-full">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      OTP <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      className="border border-zinc-300 rounded-lg w-full p-3"
+                      type="text"
+                      onChange={(e) => {
+                        // Only allow numbers and limit to 6 digits
+                        const value = e.target.value
+                          .replace(/\D/g, "")
+                          .slice(0, 6);
+                        setRegOtp(value);
+                      }}
+                      value={regOtp}
+                      required
+                      placeholder="Enter 6-digit OTP"
+                      maxLength="6"
+                      pattern="[0-9]{6}"
+                    />
 
+                    {/* Show OTP validation error */}
+                    {regOtp && validateOtp(regOtp) && (
+                      <p className="text-red-500 text-xs mt-1">
+                        {validateOtp(regOtp)}
+                      </p>
+                    )}
+
+                    <div className="flex justify-between items-center mt-2">
+                      <span className="text-sm text-gray-600">
+                        {regOtpTimer > 0
+                          ? `Resend OTP in ${formatTime(regOtpTimer)}`
+                          : "OTP expired - Please request a new one"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleResendRegistrationOtp}
+                        disabled={regOtpTimer > 0 || isResendingRegOtp}
+                        className="text-primary hover:text-primary/80 underline text-sm font-medium disabled:text-gray-400 disabled:no-underline disabled:cursor-not-allowed"
+                      >
+                        {isResendingRegOtp ? "Sending..." : "Resend OTP"}
+                      </button>
+                    </div>
+                    <div className="text-center mt-4">
+                      <span
+                        onClick={resetRegistrationFlow}
+                        className="text-sm text-zinc-500 hover:text-primary underline cursor-pointer"
+                      >
+                        Start Over
+                      </span>
+                    </div>
+                  </div>
+                )}
                 {registrationStep === 3 && (
                   <>
                     <div className="w-full">
@@ -1297,6 +1488,14 @@ const LoginPage = () => {
                           </p>
                         )}
                     </div>
+                    <div className="text-center mt-4">
+                      <span
+                        onClick={resetRegistrationFlow}
+                        className="text-sm text-zinc-500 hover:text-primary underline cursor-pointer"
+                      >
+                        Start Over
+                      </span>
+                    </div>
                   </>
                 )}
               </>
@@ -1328,7 +1527,6 @@ const LoginPage = () => {
                     placeholder="Enter your password"
                   />
                 </div>
-
                 <div className="flex justify-between text-right">
                   <span
                     onClick={() => setState("ForgotUsername")}
@@ -1346,18 +1544,57 @@ const LoginPage = () => {
               </>
             )}
 
-            {/* Dynamic Button Text */}
-            {state === "Register" &&
-              registrationStep === 1 &&
-              renderButton("Continue")}
-            {state === "Register" &&
-              registrationStep === 2 &&
-              renderButton("Verify OTP")}
-            {state === "Register" &&
-              registrationStep === 3 &&
-              renderButton("Set Password & Login")}
-            {state === "Login" && renderButton("Login")}
+            {/* reCAPTCHA for Login and Registration Step 1 */}
+            {(state === "Login" ||
+              (state === "Register" && registrationStep === 1)) && (
+              <div className="w-full">
+                <ReCAPTCHA
+                  ref={recaptchaRef}
+                  sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY}
+                  onChange={handleRecaptchaChange}
+                />
+              </div>
+            )}
 
+            {/* Dynamic Buttons */}
+            {state === "Login" && (
+              <button
+                type="submit"
+                disabled={isLoginDisabled}
+                className="bg-primary hover:bg-primary/90 text-white w-full py-3 px-4 rounded-lg text-base font-medium transition-colors duration-200 shadow-sm disabled:bg-primary/50 disabled:cursor-not-allowed"
+              >
+                {loading ? "Logging in..." : "Login"}
+              </button>
+            )}
+            {state === "Register" && registrationStep === 1 && (
+              <button
+                type="submit"
+                disabled={isRegStep1Disabled}
+                className="bg-primary hover:bg-primary/90 text-white w-full py-3 px-4 rounded-lg text-base font-medium transition-colors duration-200 shadow-sm disabled:bg-primary/50 disabled:cursor-not-allowed"
+              >
+                {loading ? "Processing..." : "Continue"}
+              </button>
+            )}
+            {state === "Register" && registrationStep === 2 && (
+              <button
+                type="submit"
+                disabled={isRegStep2Disabled}
+                className="bg-primary hover:bg-primary/90 text-white w-full py-3 px-4 rounded-lg text-base font-medium transition-colors duration-200 shadow-sm disabled:bg-primary/50 disabled:cursor-not-allowed"
+              >
+                {loading ? "Verifying..." : "Verify OTP"}
+              </button>
+            )}
+            {state === "Register" && registrationStep === 3 && (
+              <button
+                type="submit"
+                disabled={isRegStep3Disabled}
+                className="bg-primary hover:bg-primary/90 text-white w-full py-3 px-4 rounded-lg text-base font-medium transition-colors duration-200 shadow-sm disabled:bg-primary/50 disabled:cursor-not-allowed"
+              >
+                {loading ? "Completing..." : "Set Password & Login"}
+              </button>
+            )}
+
+            {/* Toggle between Login and Register */}
             <div className="text-center text-sm">
               {state === "Register" ? (
                 <>

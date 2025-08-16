@@ -60,6 +60,7 @@ import {
   registerUser,
   verifyDonationPayment,
 } from "../controllers/userController.js";
+import { getAllChildUsers } from "../controllers/additionalController.js";
 const adminRouter = express.Router();
 
 adminRouter.post("/login", loginAdmin);
@@ -172,5 +173,8 @@ adminRouter.delete("/remove-admin/:id", authAdmin, isSuperAdmin, removeAdmin); /
 adminRouter.post("/edit-admin", authAdmin, isSuperAdmin, editAdmin);
 
 adminRouter.get("/courier-addresses", authAdmin, getOnlineCourierAddresses);
+
+// Admin route to get all children
+adminRouter.get("/child/all", authAdmin, getAllChildUsers);
 
 export default adminRouter;
